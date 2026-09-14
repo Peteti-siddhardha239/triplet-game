@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101b2f" />
+    <meta name="description" content="Triplet is an online multiplayer memory card game for three to five players. Create a room, share the code, and race to find three matching cards." />
+    <title>Triplet — Online Multiplayer Memory Card Game</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <!-- Connection status (online mode only) -->
+    <div class="conn-status" id="connStatus" hidden aria-live="polite">
+      <span class="conn-dot" id="connDot" title="Connection status"></span>
+      <span class="conn-label" id="connLabel">Connecting…</span>
+      <span class="conn-ping" id="connPing"></span>
+    </div>
+
+    <main class="shell">
+      <header class="site-header">
+        <a class="brand" href="#" id="brandHome" aria-label="Go to Triplet home">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <span>
+            <strong>TRIPLET</strong>
+            <small>public clues · private hands</small>
+          </span>
+        </a>
+        <div class="header-right">
+          <span class="difficulty-badge" id="difficultyBadge" hidden aria-label="Hard difficulty mode">⚡ HARD</span>
+          <button class="text-button" id="openRules" type="button">How to play</button>
+        </div>
+      </header>
+
+      <!-- ══════════════════════════════════════════════════════════
+           MODE SELECT
+      ══════════════════════════════════════════════════════════ -->
+      <section class="mode-select" id="modeSelect" aria-labelledby="modeTitle">
+        <div class="mode-hero">
+          <div class="eyebrow">A memory card game for 3–5 players</div>
+          <h1 id="modeTitle">Find the third card<br />before someone else does.</h1>
+          <p class="intro">
+            Ask for high or low cards, watch every public reveal, and build matching triplets from a 36-card deck.
+            Nothing is written down — your memory is the game.
+          </p>
+        </div>
+
+        <div class="mode-cards">
+          <button class="mode-card mode-online" id="goOnline" type="button">
+            <span class="mode-icon" aria-hidden="true">⚡</span>
+            <strong>Online Multiplayer</strong>
+            <small>Create or join a room · Real-time · 3–5 players</small>
+            <span class="mode-tag">NEW</span>
+          </button>
+          <button class="mode-card mode-offline" id="goOffline" type="button">
+            <span class="mode-icon" aria-hidden="true">🎴</span>
+            <strong>Play Offline</strong>
+            <small>Pass &amp; play · Same device · No server needed</small>
+          </button>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           ONLINE LOBBY — Create / Join Room
+      ══════════════════════════════════════════════════════════ -->
+      <section class="online-lobby" id="onlineLobby" hidden aria-labelledby="onlineLobbyTitle">
+        <div class="lobby-eyebrow">
+          <div class="eyebrow">Multiplayer lobby</div>
+          <h1 id="onlineLobbyTitle">Set up your table.</h1>
+        </div>
+
+        <div class="online-panels">
+          <!-- Create Room -->
+          <div class="online-panel create-panel card-surface" aria-labelledby="createHeading">
+            <div class="mini-label">New game</div>
+            <h2 id="createHeading">Create a Room</h2>
+            <p class="quiet">Others join using the 6-character code you'll receive.</p>
+
+            <div class="form-field">
+              <label for="createName">Your name</label>
+              <input type="text" id="createName" maxlength="18" placeholder="e.g. Alex" autocomplete="off" />
+            </div>
+
+            <div class="form-field">
+              <label>Difficulty</label>
+              <div class="diff-picker" id="diffPicker" role="group" aria-label="Choose difficulty">
+                <button type="button" data-diff="normal" class="diff-btn selected" aria-pressed="true">Normal</button>
+                <button type="button" data-diff="hard"   class="diff-btn" aria-pressed="false">⚡ Hard</button>
+              </div>
+            </div>
+
+            <div class="diff-desc" id="diffDesc" aria-live="polite">
+              <span>3 triplets to win</span>
+              <span>4-second reveals</span>
+              <span>40-second turns</span>
+              <span>Bonus clue on any double</span>
+            </div>
+
+            <button class="primary-button full-button" id="createRoom" type="button">
+              Create Room →
+            </button>
+          </div>
+
+          <!-- Join Room -->
+          <div class="online-panel join-panel card-surface" aria-labelledby="joinHeading">
+            <div class="mini-label">Have a code?</div>
+            <h2 id="joinHeading">Join a Room</h2>
+            <p class="quiet">Get the 6-character room code from your host and enter it below.</p>
+
+            <div class="form-field">
+              <label for="joinName">Your name</label>
+              <input type="text" id="joinName" maxlength="18" placeholder="e.g. Jordan" autocomplete="off" />
+            </div>
+
+            <div class="form-field">
+              <label for="joinCode">Room code</label>
+              <input type="text" id="joinCode" maxlength="6" placeholder="ABC123"
+                     class="code-input" autocomplete="off" spellcheck="false" />
+            </div>
+
+            <button class="primary-button full-button" id="joinRoom" type="button">
+              Join Room →
+            </button>
+          </div>
+        </div>
+
+        <button class="text-button back-button" id="backToMode" type="button">← Back to home</button>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           WAITING ROOM
+      ══════════════════════════════════════════════════════════ -->
+      <section class="waiting-room" id="waitingRoom" hidden aria-labelledby="waitingTitle">
+        <div class="room-code-block card-surface">
+          <div class="mini-label">Share this code with friends</div>
+          <div class="room-code-row">
+            <span class="room-code-chars" id="roomCodeDisplay" aria-label="Room code">------</span>
+            <button class="copy-btn" id="copyCode" type="button" aria-label="Copy room code">
+              <span id="copyLabel">⎘ Copy</span>
+            </button>
+          </div>
+          <p class="room-code-hint">Open <strong>http://localhost:3000</strong> on other devices and enter this code.</p>
+        </div>
+
+        <div class="waiting-layout">
+          <div class="waiting-players card-surface" aria-labelledby="waitingTitle">
+            <div class="panel-heading">
+              <div>
+                <div class="mini-label">Players at the table</div>
+                <h2 id="waitingTitle">Waiting for players…</h2>
+              </div>
+              <span class="count-pill" id="waitingCount">1 / 5</span>
+            </div>
+            <ul class="waiting-list" id="waitingPlayerList" aria-live="polite"></ul>
+            <p class="quiet" id="waitingHint">Waiting for the host to start the game.</p>
+          </div>
+
+          <div class="waiting-side">
+            <div class="waiting-info card-surface">
+              <div class="mini-label">Difficulty</div>
+              <div class="diff-display-block">
+                <span class="diff-label" id="waitingDiffLabel">Normal</span>
+                <ul class="diff-rules" id="waitingDiffRules" aria-label="Difficulty rules">
+                  <li>3 triplets to win</li>
+                  <li>4-second reveals</li>
+                  <li>40-second turn timer</li>
+                  <li>Bonus clue on any value match</li>
+                </ul>
+              </div>
+            </div>
+
+            <button class="primary-button full-button" id="startOnlineGame" hidden type="button">
+              Start Game →
+            </button>
+            <p class="quiet center-text" id="minPlayersHint">Need at least 3 players to start.</p>
+          </div>
+        </div>
+
+        <button class="text-button back-button" id="leaveRoom" type="button">← Leave room</button>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           OFFLINE LOBBY (original)
+      ══════════════════════════════════════════════════════════ -->
+      <section class="lobby card-surface" id="lobby" hidden aria-labelledby="lobbyTitle">
+        <div class="eyebrow">Pass &amp; play · local only</div>
+        <h1 id="lobbyTitle">Find the third card before someone else remembers it.</h1>
+        <p class="intro">
+          Ask only for high or low cards, watch every public answer, and build matching triplets from a 36-card deck.
+        </p>
+
+        <div class="lobby-grid">
+          <section class="setup-panel" aria-labelledby="playerCountHeading">
+            <h2 id="playerCountHeading">Choose the table</h2>
+            <div class="count-picker" id="countPicker" role="group" aria-label="Number of players">
+              <button type="button" data-count="3">3 players</button>
+              <button type="button" data-count="4">4 players</button>
+              <button type="button" data-count="5">5 players</button>
+            </div>
+            <p class="setup-note" id="dealSummary"></p>
+            <div class="name-fields" id="nameFields"></div>
+            <button class="primary-button" id="startGame" type="button">
+              Deal the cards <span aria-hidden="true">→</span>
+            </button>
+          </section>
+
+          <aside class="rules-preview" aria-labelledby="goalHeading">
+            <div class="mini-label">The objective</div>
+            <h2 id="goalHeading">Make three of a kind.</h2>
+            <p>Complete any three triplets, or instantly win by completing the three 7s.</p>
+            <ol class="rule-steps">
+              <li><span>01</span> Each turn starts with two clues and one free matrix flip.</li>
+              <li><span>02</span> Ask any opponent for their highest or lowest card.</li>
+              <li><span>03</span> Two new matching clue values earn one bonus clue.</li>
+              <li><span>04</span> Every answer is public; only your hand is private.</li>
+            </ol>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           GAME VIEW (shared: online + offline)
+      ══════════════════════════════════════════════════════════ -->
+      <section class="game" id="game" hidden aria-live="polite">
+        <div class="table-top card-surface">
+          <div>
+            <div class="eyebrow" id="roundLabel">Round 1</div>
+            <h1 id="turnHeading">Your turn</h1>
+          </div>
+          <div class="turn-status" id="turnStatus"></div>
+          <button class="outline-button" id="newGame" type="button">New table</button>
+        </div>
+
+        <!-- Turn timer bar -->
+        <div class="turn-timer-wrap" id="turnTimerWrap" hidden aria-hidden="true">
+          <div class="turn-timer-track">
+            <div class="turn-timer-fill" id="turnTimerFill"></div>
+          </div>
+          <span class="turn-timer-label" id="turnTimerLabel">40s</span>
+        </div>
+
+        <section class="scoreboard card-surface" aria-label="Players and completed triplets" id="scoreboard"></section>
+
+        <div class="table-layout">
+          <!-- Hand -->
+          <section class="hand-panel card-surface" aria-labelledby="handHeading">
+            <div class="panel-heading">
+              <div>
+                <div class="mini-label">Private</div>
+                <h2 id="handHeading">Your sorted hand</h2>
+              </div>
+              <span class="count-pill" id="handCount"></span>
+            </div>
+            <p class="quiet" id="handHint">Only the active player should view these cards.</p>
+            <div class="hand" id="hand"></div>
+          </section>
+
+          <!-- Matrix -->
+          <section class="matrix-panel card-surface" aria-labelledby="matrixHeading">
+            <div class="panel-heading">
+              <div>
+                <div class="mini-label">Public table</div>
+                <h2 id="matrixHeading">Memory matrix</h2>
+              </div>
+              <span class="matrix-flip-hint" id="matrixFlipHint">1 free flip left</span>
+            </div>
+            <div class="matrix" id="matrix"></div>
+            <p class="matrix-note" id="matrixNote">Free flip: peek for free once. Extra flips cost a clue.</p>
+          </section>
+
+          <!-- Actions -->
+          <aside class="action-panel card-surface" aria-labelledby="actionsHeading">
+            <div class="panel-heading compact-heading">
+              <div>
+                <div class="mini-label">Your move</div>
+                <h2 id="actionsHeading">Use a clue</h2>
+              </div>
+            </div>
+            <p class="clue-count" id="clueCount"></p>
+            <div class="ask-list" id="askList"></div>
+            <div class="action-divider"></div>
+            <h3>Call a triplet</h3>
+            <p class="quiet">When you know all three locations for a rank, call it. Wrong calls lose your next turn.</p>
+            <div class="claim-controls">
+              <label for="tripletValue">Triplet value</label>
+              <select id="tripletValue" aria-label="Triplet value"></select>
+              <button class="claim-button" id="claimTriplet" type="button">Call triplet</button>
+            </div>
+            <button class="outline-button end-turn" id="endTurn" type="button">End turn</button>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <!-- Rules dialog -->
+    <dialog class="rules-dialog" id="rulesDialog" aria-labelledby="rulesTitle">
+      <button class="dialog-close" id="closeRules" type="button" aria-label="Close rules">×</button>
+      <div class="eyebrow">Triplet rulebook v2</div>
+      <h2 id="rulesTitle">How to play at the table</h2>
+      <div class="rulebook-grid">
+        <section>
+          <h3>The deck and deal</h3>
+          <p>The deck has 36 cards: red, blue, and green copies of 0–9, +2, and +4.</p>
+          <ul>
+            <li>3 players: 10 cards each, 2×3 matrix</li>
+            <li>4 players: 8 cards each, 2×2 matrix</li>
+            <li>5 players: 6 cards each, 2×3 matrix</li>
+          </ul>
+        </section>
+        <section>
+          <h3>Clues and the free flip</h3>
+          <p>Each turn gives you 2 clues plus 1 free matrix flip (doesn't cost a clue). Ask an opponent for their high or low card (costs a clue), or flip a matrix card (free once, costs a clue after).</p>
+          <p>All reveals vanish after 3–4 seconds. Nothing is written down — memory is the game.</p>
+        </section>
+        <section>
+          <h3>Bonus clue</h3>
+          <p>If your first two clues reveal the same card value, you earn a 3rd clue. In Hard mode, both clues must be genuinely new discoveries (not cards you already knew about).</p>
+        </section>
+        <section>
+          <h3>Memory decay (Hard mode)</h3>
+          <p>In Hard mode, card locations "fade" after 3 full rounds. You must re-reveal a stale card before you can use it to validate a triplet claim.</p>
+        </section>
+        <section>
+          <h3>Triplets and victory</h3>
+          <p>Call a triplet when you know where all three copies of a value are. A wrong call skips your next turn. The first player to complete 3 triplets (Normal) or 4 triplets (Hard) wins. Completing the 7 triplet wins immediately in either mode.</p>
+        </section>
+        <section>
+          <h3>Turn timer</h3>
+          <p>In online games: Normal turns last 40 seconds, Hard turns last 25 seconds. The timer resets after each clue action. Time expiry auto-ends your turn.</p>
+        </section>
+      </div>
+      <form method="dialog"><button class="primary-button" type="submit">Got it</button></form>
+    </dialog>
+
+    <!-- Card reveal popup -->
+    <section class="reveal-popup" id="revealPopup" hidden aria-live="assertive" aria-atomic="true">
+      <div class="reveal-popup-inner">
+        <div class="mini-label">Public reveal</div>
+        <h2 id="revealTitle">Remember this card</h2>
+        <p id="revealSubtitle">Everyone has a few seconds.</p>
+        <div class="reveal-card" id="revealCard"></div>
+        <div class="reveal-progress" aria-hidden="true">
+          <span id="revealProgressBar" style="--reveal-duration: 4s"></span>
+        </div>
+      </div>
+    </section>
+
+    <script src="game-engine.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

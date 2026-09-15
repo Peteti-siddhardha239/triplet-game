@@ -447,7 +447,7 @@
       : st.finishedReason
       ? `<strong>No winning triplet.</strong><span>${esc(st.finishedReason)}</span>`
       : isMyTurn
-      ? `<strong>${clues} clue${clues !== 1 ? "s" : ""} remaining</strong><span>${st.turn.matrixFlipped ? "Free flip used." : "Free matrix flip available!"}</span>`
+      ? `<strong>${clues} guess${clues !== 1 ? "es" : ""} remaining</strong><span>Match 2 same numbers to earn a 3rd guess!</span>`
       : `<strong>Watching ${esc(current?.name || "…")}</strong><span>All reveals are public — memorize them.</span>`;
 
     renderOnlineScoreboard(st, sets2win);
@@ -499,8 +499,8 @@
     const matrix = $("matrix");
     matrix.style.setProperty("--matrix-columns", st.configuration.columns);
 
-    const freeLeft = myTurn && !st.turn.matrixFlipped;
-    const noClues  = (st.remainingClues ?? 0) === 0 || st.isFinished;
+    const clues   = st.remainingClues ?? 0;
+    const noClues = clues === 0 || st.isFinished;
 
     matrix.innerHTML = st.board.map(slot => {
       if (slot.isEmpty) return '<div class="matrix-card empty" aria-label="Claimed">claimed</div>';
@@ -508,7 +508,7 @@
       const preview = previewSlot === n;
       const seen    = st.turn.seenSlots.includes(n);
       const canAct  = myTurn && !st.isFinished && !isRevealActive();
-      const dis     = !canAct || seen || (!freeLeft && noClues);
+      const dis     = !canAct || seen || noClues;
       const lbl     = preview ? `Matrix ${n + 1} revealed` : `Flip matrix ${n + 1}`;
       return `<button class="matrix-card${preview ? " preview" : ""}" data-slot="${n}" type="button" ${dis ? "disabled" : ""} aria-label="${lbl}">
         ${preview && activeReveal?.card ? cardMarkup(activeReveal.card) : '<span class="card-back" aria-hidden="true"></span>'}
@@ -517,17 +517,15 @@
 
     const hint = $("matrixFlipHint");
     if (myTurn) {
-      hint.textContent = freeLeft ? "1 free flip left" : "Free flip used";
-      hint.className   = `matrix-flip-hint ${freeLeft ? "free-flip-available" : "free-flip-used"}`;
+      hint.textContent = `${clues} clue${clues !== 1 ? "s" : ""} left`;
+      hint.className   = "matrix-flip-hint";
     } else {
-      hint.textContent = "Flip to reveal a card";
+      hint.textContent = "Memory matrix";
       hint.className   = "matrix-flip-hint";
     }
     $("matrixNote").textContent = previewSlot !== null
       ? "Memorize this card — it turns face down again soon."
-      : freeLeft && myTurn
-      ? "Use your free flip now, or save it and spend a clue later."
-      : "Extra matrix flips cost a clue.";
+      : "Every matrix flip or opponent question costs 1 clue.";
   }
 
   function renderOnlineActions(argSt, argMyTurn) {
@@ -570,7 +568,7 @@
     $("tripletValue").disabled = !myTurn || st.isFinished || lock;
     $("claimTriplet").disabled = !myTurn || st.isFinished || lock;
 
-    const canEnd = myTurn && !st.isFinished && (st.turn.actions > 0 || st.turn.matrixFlipped) && !lock;
+    const canEnd = myTurn && !st.isFinished && st.turn.actions > 0 && !lock;
     $("endTurn").disabled    = !canEnd;
     $("endTurn").textContent = st.isFinished ? "Table complete" : "End turn";
   }
@@ -626,7 +624,7 @@
       ? `<strong>${esc(winner.name)} takes the win!</strong><span>${winner.sets.includes(7) ? "The 7 triplet sealed it." : "Completed 3 triplets."}</span>`
       : game.finishedReason
       ? `<strong>No winning triplet.</strong><span>${esc(game.finishedReason)}</span>`
-      : `<strong>${clues} clue${clues !== 1 ? "s" : ""} remaining</strong><span>${game.turn.matrixFlipped ? "Free flip used." : "Free matrix flip available!"}</span>`;
+      : `<strong>${clues} guess${clues !== 1 ? "es" : ""} remaining</strong><span>Match 2 same numbers to earn a 3rd guess!</span>`;
 
     // Scoreboard
     $("scoreboard").innerHTML = game.players.map(p => {
@@ -661,8 +659,8 @@
     const matrix  = $("matrix");
     matrix.style.setProperty("--matrix-columns", game.configuration.columns);
 
-    const freeLeft = !game.turn.matrixFlipped;
-    const noClues  = game.getRemainingClues() === 0 || game.isFinished;
+    const clues    = game.getRemainingClues();
+    const noClues  = clues === 0 || game.isFinished;
 
     matrix.innerHTML = game.board.map(slot => {
       if (!slot.cardId) return '<div class="matrix-card empty">claimed</div>';
@@ -671,7 +669,7 @@
       const seen    = game.turn.seenSlots.has(n);
       const card    = game.getCard(slot.cardId);
       const canAct  = !game.isFinished && !isRevealActive();
-      const dis     = !canAct || seen || (!freeLeft && noClues);
+      const dis     = !canAct || seen || noClues;
       const lbl     = preview ? `Matrix ${n + 1} revealed` : `Flip matrix ${n + 1}`;
       return `<button class="matrix-card${preview ? " preview" : ""}" data-slot="${n}" type="button" ${dis ? "disabled" : ""} aria-label="${lbl}">
         ${preview ? cardMarkup(card) : '<span class="card-back" aria-hidden="true"></span>'}
@@ -679,13 +677,12 @@
     }).join("");
 
     const hint = $("matrixFlipHint");
-    hint.textContent = freeLeft ? "1 free flip left" : "Free flip used";
-    hint.className   = `matrix-flip-hint ${freeLeft ? "free-flip-available" : "free-flip-used"}`;
+    hint.textContent = `${clues} clue${clues !== 1 ? "s" : ""} left`;
+    hint.className   = "matrix-flip-hint";
 
     $("matrixNote").textContent = previewSlot !== null
       ? "Memorize this card — turns face down again soon."
-      : freeLeft ? "Use your free flip: one free peek per turn."
-      : "Extra matrix flips cost a clue.";
+      : "Every matrix flip or opponent question costs 1 clue.";
   }
 
   function renderOfflineActions() {
@@ -717,7 +714,7 @@
     $("tripletValue").disabled = game.isFinished || lock;
     $("claimTriplet").disabled = game.isFinished || lock;
 
-    const canEnd = !game.isFinished && (game.turn.actions > 0 || game.turn.matrixFlipped) && !lock;
+    const canEnd = !game.isFinished && game.turn.actions > 0 && !lock;
     $("endTurn").disabled    = !canEnd;
     $("endTurn").textContent = game.isFinished ? "Table complete" : "End turn";
   }

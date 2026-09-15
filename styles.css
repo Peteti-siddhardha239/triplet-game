@@ -364,9 +364,7 @@ h3 { margin: 0 0 7px; font-size: 0.91rem; }
 
 /* ── Matrix ── */
 .matrix-panel { min-height: 360px; background: linear-gradient(160deg, rgba(255,255,253,0.96), rgba(238,244,242,0.82)); }
-.matrix-flip-hint { color: var(--muted); font-size: 0.68rem; line-height: 1.35; text-align: right; max-width: 130px; }
-.matrix-flip-hint.free-flip-available { color: #3d9e6b; font-weight: 800; }
-.matrix-flip-hint.free-flip-used { color: #a0a8b8; text-decoration: line-through; }
+.matrix-flip-hint { color: var(--muted); font-size: 0.72rem; font-weight: 700; line-height: 1.35; text-align: right; max-width: 140px; }
 .matrix { display: grid; grid-template-columns: repeat(var(--matrix-columns,3), minmax(76px,1fr)); gap: 12px; padding: 14px; border: 1px solid rgba(101,130,110,0.22); border-radius: 15px; background: #c9dfd4; }
 .matrix-card { position: relative; min-height: 118px; padding: 0; overflow: hidden; border: 0; border-radius: 11px; background: #183651; box-shadow: 0 6px 14px rgba(40,70,61,0.18); transition: transform 180ms ease, box-shadow 180ms ease; }
 .matrix-card:not(:disabled):hover { transform: translateY(-2px) rotate(-0.5deg); box-shadow: 0 10px 18px rgba(40,70,61,0.24); }

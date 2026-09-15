@@ -205,15 +205,10 @@
 
     /**
      * Flip a matrix card.
-     * First flip per turn is FREE (doesn't cost a clue).
-     * Subsequent flips cost one clue each.
+     * Costs one clue.
      */
     flip(slot) {
-      assert(!this.isFinished, "The game is already over.");
-      const isFreeFlip = !this.turn.matrixFlipped;
-
-      // Free flip: no clue needed. Paid flip: need clues.
-      if (!isFreeFlip) this._assertActionAvailable();
+      this._assertActionAvailable();
 
       const boardSlot = this.getBoardSlot(slot);
       assert(boardSlot.cardId, "That matrix position has already been claimed.");
@@ -223,21 +218,13 @@
       this.knownCardIds.add(boardSlot.cardId);
       this.revealAge.set(boardSlot.cardId, this.turnNumber);
       this.turn.seenSlots.add(boardSlot.slot);
-      this.turn.seenCardIds.add(boardSlot.cardId);
 
-      let result;
-      if (isFreeFlip) {
-        this.turn.matrixFlipped = true;
-        result = { bonus: false, remainingClues: this.getRemainingClues(), free: true };
-        this._record({ type: "flip", actorId: this.currentPlayer.id, slot: boardSlot.slot, cardId: boardSlot.cardId, free: true, message: `${this.currentPlayer.name} used their free flip: matrix ${boardSlot.slot + 1} → ${cardLabel(card)}.` });
-      } else {
-        result = this._consumeClue(boardSlot.cardId);
-        result.free = false;
-        this._record({ type: "flip", actorId: this.currentPlayer.id, slot: boardSlot.slot, cardId: boardSlot.cardId, free: false, message: `${this.currentPlayer.name} flipped matrix ${boardSlot.slot + 1}: ${cardLabel(card)}.` });
-      }
+      const result = this._consumeClue(boardSlot.cardId);
+      const message = `${this.currentPlayer.name} flipped matrix ${boardSlot.slot + 1}: ${cardLabel(card)}.`;
+      this._record({ type: "flip", actorId: this.currentPlayer.id, slot: boardSlot.slot, cardId: boardSlot.cardId, message });
 
-      if (result.bonus) this._record({ type: "bonus", actorId: this.currentPlayer.id, message: `Bonus clue: duplicate new value ${card.value} discovered.` });
-      return { card, ...result, message: result.free ? `Free flip: ${cardLabel(card)}` : `Clue flip: ${cardLabel(card)}` };
+      if (result.bonus) this._record({ type: "bonus", actorId: this.currentPlayer.id, message: `Bonus clue: matching value ${card.value} discovered! 3rd guess awarded.` });
+      return { card, ...result, message };
     }
 
     /**
@@ -314,7 +301,7 @@
     /** End the current player's turn voluntarily. Must have used ≥1 clue. */
     endTurn() {
       assert(!this.isFinished, "The game is already over.");
-      assert(this.turn.actions > 0 || this.turn.matrixFlipped, "Use at least one clue or flip before ending the turn.");
+      assert(this.turn.actions > 0, "Use at least one clue before ending the turn.");
       this._record({ type: "turnEnd", actorId: this.currentPlayer.id, message: `${this.currentPlayer.name} ends their turn.` });
       this._advanceTurn();
     }
@@ -363,7 +350,6 @@
         seenSlots: new Set(),              // matrix slots flipped this turn
         askedPlayers: new Map(),           // playerId → Set<'highest'|'lowest'>
         knownAtTurnStart: new Set(this.knownCardIds), // snapshot for bonus rule
-        matrixFlipped: false,
         clueCardIds: [],
       };
     }

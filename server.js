@@ -266,7 +266,6 @@ function sanitizeState(room, forPlayerId) {
     turn: {
       actions:       game.turn.actions,
       maxActions:    game.turn.maxActions,
-      matrixFlipped: game.turn.matrixFlipped,
       seenSlots:     [...game.turn.seenSlots],
     },
     currentPlayerId: game.currentPlayer.id,
@@ -584,12 +583,12 @@ function handleMessage(ws, msg) {
       broadcastState(room);
       broadcast(room, {
         type: "reveal",
-        title: `Matrix card ${Number(msg.slot) + 1}${result.free ? " (free flip)" : ""}`,
+        title: `Matrix card ${Number(msg.slot) + 1}`,
         card: result.card, slot: Number(msg.slot),
         duration: revealDuration,
       });
-      if (result.bonus) broadcast(room, { type: "toast", message: `🎉 Bonus clue! ${room.game.currentPlayer.name} gets a 3rd clue this turn.` });
-      if (!result.free) startTurnTimer(room);
+      if (result.bonus) broadcast(room, { type: "toast", message: `🎉 Bonus guess! Both revealed cards matched ${result.card.value}! 3rd guess awarded.` });
+      startTurnTimer(room);
     } catch (e) { sendError(ws, e.message); }
     return;
   }

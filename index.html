@@ -238,9 +238,9 @@
             <h2 id="goalHeading">Make three of a kind.</h2>
             <p>Complete any three triplets, or instantly win by completing the three 7s.</p>
             <ol class="rule-steps">
-              <li><span>01</span> Each turn starts with two clues and one free matrix flip.</li>
-              <li><span>02</span> Ask any opponent for their highest or lowest card.</li>
-              <li><span>03</span> Two new matching clue values earn one bonus clue.</li>
+              <li><span>01</span> Every player receives 2 guesses (clues) per turn.</li>
+              <li><span>02</span> Ask any opponent for high/low card, or flip a matrix card.</li>
+              <li><span>03</span> If both 2 guesses reveal the same number, earn a 3rd bonus guess!</li>
               <li><span>04</span> Every answer is public; only your hand is private.</li>
             </ol>
           </aside>
@@ -291,10 +291,10 @@
                 <div class="mini-label">Public table</div>
                 <h2 id="matrixHeading">Memory matrix</h2>
               </div>
-              <span class="matrix-flip-hint" id="matrixFlipHint">1 free flip left</span>
+              <span class="matrix-flip-hint" id="matrixFlipHint">2 clues available</span>
             </div>
             <div class="matrix" id="matrix"></div>
-            <p class="matrix-note" id="matrixNote">Free flip: peek for free once. Extra flips cost a clue.</p>
+            <p class="matrix-note" id="matrixNote">Every matrix flip or opponent question costs 1 clue.</p>
           </section>
 
           <!-- Actions -->
@@ -340,13 +340,13 @@
           </ul>
         </section>
         <section>
-          <h3>Clues and the free flip</h3>
-          <p>Each turn gives you 2 clues plus 1 free matrix flip (doesn't cost a clue). Ask an opponent for their high or low card (costs a clue), or flip a matrix card (free once, costs a clue after).</p>
-          <p>All reveals vanish after 3–4 seconds. Nothing is written down — memory is the game.</p>
+          <h3>Guesses &amp; Matrix Flips</h3>
+          <p>Each turn gives you 2 guesses (clues). Ask an opponent for their high or low card, or flip a matrix card. Each action costs 1 guess.</p>
+          <p>All reveals vanish after 3–4 seconds. Memory is the key.</p>
         </section>
         <section>
-          <h3>Bonus clue</h3>
-          <p>If your first two clues reveal the same card value, you earn a 3rd clue. In Hard mode, both clues must be genuinely new discoveries (not cards you already knew about).</p>
+          <h3>Bonus Guess Reward</h3>
+          <p>If your 2 guesses reveal the exact same card number/value, you earn a 3rd bonus guess for that turn! In Hard mode, both revealed cards must be new discoveries.</p>
         </section>
         <section>
           <h3>Memory decay (Hard mode)</h3>

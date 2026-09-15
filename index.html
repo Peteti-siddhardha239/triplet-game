@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#101b2f" />
-    <meta name="description" content="Triplet is an online multiplayer memory card game for three to five players. Create a room, share the code, and race to find three matching cards." />
-    <title>Triplet — Online Multiplayer Memory Card Game</title>
+    <meta name="description" content="Time Trotter is an online multiplayer memory card game for three to five players. Create a room, share the code, and race to find three matching cards." />
+    <title>Time Trotter — Online Multiplayer Memory Card Game</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
@@ -24,10 +24,10 @@
 
     <main class="shell">
       <header class="site-header">
-        <a class="brand" href="#" id="brandHome" aria-label="Go to Triplet home">
+        <a class="brand" href="#" id="brandHome" aria-label="Go to Time Trotter home">
           <span class="brand-mark" aria-hidden="true">T</span>
           <span>
-            <strong>TRIPLET</strong>
+            <strong>TIME TROTTER</strong>
             <small>public clues · private hands</small>
           </span>
         </a>
@@ -104,6 +104,9 @@
             <button class="primary-button full-button" id="createRoom" type="button">
               Create Room →
             </button>
+            <button class="outline-button full-button" id="quickMatch" type="button" style="margin-top:8px">
+              🎲 Quick Match
+            </button>
           </div>
 
           <!-- Join Room -->
@@ -126,6 +129,16 @@
             <button class="primary-button full-button" id="joinRoom" type="button">
               Join Room →
             </button>
+
+            <!-- Room browser -->
+            <div id="roomBrowserWrap" hidden>
+              <div class="action-divider" style="margin:18px 0 12px"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <span class="mini-label">Open rooms</span>
+                <button class="text-button" id="refreshRooms" type="button" style="font-size:0.7rem">↺ Refresh</button>
+              </div>
+              <div id="roomBrowserList"></div>
+            </div>
           </div>
         </div>
 
@@ -145,6 +158,7 @@
             </button>
           </div>
           <p class="room-code-hint">Open <strong>http://localhost:3000</strong> on other devices and enter this code.</p>
+          <span class="difficulty-badge" id="quickMatchBadge" hidden style="margin-top:8px;display:inline-block">🎲 QUICK MATCH</span>
         </div>
 
         <div class="waiting-layout">
@@ -182,6 +196,16 @@
         </div>
 
         <button class="text-button back-button" id="leaveRoom" type="button">← Leave room</button>
+
+        <!-- Lobby Chat -->
+        <div class="card-surface" id="lobbyChatWrap" hidden style="margin-top:18px;padding:18px">
+          <div class="mini-label" style="margin-bottom:10px">Room chat</div>
+          <div id="lobbyChatLog" style="height:120px;overflow-y:auto;display:grid;gap:5px;margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="lobbyChatInput" maxlength="200" placeholder="Say something…" style="flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:0.85rem" autocomplete="off" />
+            <button class="primary-button" id="lobbyChatSend" type="button" style="padding:9px 14px">Send</button>
+          </div>
+        </div>
       </section>
 
       <!-- ══════════════════════════════════════════════════════════
@@ -303,7 +327,7 @@
     <!-- Rules dialog -->
     <dialog class="rules-dialog" id="rulesDialog" aria-labelledby="rulesTitle">
       <button class="dialog-close" id="closeRules" type="button" aria-label="Close rules">×</button>
-      <div class="eyebrow">Triplet rulebook v2</div>
+      <div class="eyebrow">Time Trotter rulebook v2</div>
       <h2 id="rulesTitle">How to play at the table</h2>
       <div class="rulebook-grid">
         <section>

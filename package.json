@@ -1,7 +1,7 @@
 {
-  "name": "triplet-game",
+  "name": "time-trotter",
   "version": "2.0.0",
-  "description": "Triplet — online multiplayer memory card game",
+  "description": "Time Trotter — online multiplayer memory card game",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

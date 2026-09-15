@@ -509,3 +509,43 @@ h3 { margin: 0 0 7px; font-size: 0.91rem; }
   .matrix-card .card-corner { font-size: 1.08rem; }
   .matrix-card .uno-oval span { font-size: 2.8rem; }
 }
+
+/* ------------------------------------------------------
+   v2.1 additions: Quick Match, Room Browser, Chat, Host controls
+------------------------------------------------------ */
+
+/* Room browser */
+.browser-room {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--surface-alt, rgba(255,255,255,.05));
+  border: 1px solid var(--line); margin-bottom: 8px;
+}
+.browser-room-info { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.browser-room-code { font-weight: 800; font-size: 0.95rem; letter-spacing:.06em; }
+.browser-room-host { font-size: 0.75rem; opacity: .65; }
+.browser-room-diff { font-size: 0.72rem; font-weight: 700; letter-spacing: .04em; }
+.browser-room-diff.hard { color: var(--accent-orange, #f97316); }
+.browser-room-players { font-size: 0.8rem; opacity: .75; white-space: nowrap; }
+
+/* Lobby chat messages */
+.chat-msg { display: flex; gap: 8px; font-size: 0.8rem; align-items: baseline; }
+.chat-who  { font-weight: 700; color: var(--accent, #818cf8); flex-shrink: 0; }
+.chat-time { font-size: 0.68rem; opacity: .45; flex-shrink: 0; }
+.chat-text { word-break: break-word; }
+
+/* Host control buttons */
+.host-ctrl-btn {
+  background: none; border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 7px; cursor: pointer;
+  font-size: 0.72rem; opacity: .6; transition: opacity .15s, color .15s;
+  margin-left: 4px; color: inherit;
+}
+.host-ctrl-btn:hover { opacity: 1; color: var(--accent, #818cf8); }
+
+/* Quick match badge */
+#quickMatchBadge {
+  background: var(--accent, #818cf8); color: #fff;
+  border-radius: 20px; font-size: 0.7rem; font-weight: 700;
+  padding: 3px 10px; letter-spacing: .05em;
+}

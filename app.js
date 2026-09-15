@@ -11,7 +11,7 @@
 (function runTripletApp() {
   "use strict";
 
-  const { TripletGame, CONFIGURATIONS, VALUES } = window.TripletEngine;
+  const { TimeTrotterGame, TripletGame, CONFIGURATIONS, VALUES } = window.TimeTrotterEngine || window.TripletEngine;
 
   /* ─────────────────────────────────────────────────────────────
      DOM helpers
@@ -31,6 +31,7 @@
   let onlineState    = null;    // latest state_update from server
   let waitingPlayers = [];      // [{id,name,connected}]
   let selectedDiff   = "normal";
+  let isQuickMatch   = false;   // joined via Quick Match
 
   // Offline state
   let game          = null;
@@ -235,6 +236,7 @@
         myPlayerId     = msg.playerId;
         myRoomCode     = msg.code;
         isHost         = true;
+        isQuickMatch   = !!msg.quickMatch;
         selectedDiff   = msg.difficulty || "normal";
         waitingPlayers = msg.playerList || [];
         showWaitingRoom();
@@ -244,6 +246,7 @@
         myPlayerId     = msg.playerId;
         myRoomCode     = msg.code;
         isHost         = false;
+        isQuickMatch   = !!msg.quickMatch;
         selectedDiff   = msg.difficulty || "normal";
         waitingPlayers = msg.playerList || [];
         showWaitingRoom();
@@ -251,7 +254,45 @@
 
       case "rejoined":
         myPlayerId = msg.playerId;
+        isHost     = msg.isHost || false;
         // state_update will arrive next
+        break;
+
+      case "host_changed":
+        waitingPlayers = msg.playerList || waitingPlayers;
+        isHost = (myPlayerId === msg.newHost);
+        if (!$("waitingRoom").hidden) {
+          renderWaitingList();
+          updateStartBtn();
+          $('startOnlineGame').hidden = !isHost;
+          $('waitingHint').textContent = isHost
+            ? 'You are now the host. Press Start when ready.'
+            : 'Waiting for the host to start…';
+        }
+        showToast(msg.message || `${msg.name} is now the host.`);
+        break;
+
+      case "kicked":
+        showToast(msg.message || 'You were removed from the room.', true);
+        if (ws) { ws.close(); ws = null; wsReady = false; }
+        myPlayerId = null; myRoomCode = null; isHost = false;
+        onlineState = null; waitingPlayers = [];
+        mode = null;
+        $('connStatus').hidden = true;
+        showOnly('modeSelect');
+        break;
+
+      case "game_over":
+        // state_update handles rendering; just show celebration toast
+        if (msg.winnerName) showToast(`🏆 ${msg.winnerName} wins the game!`);
+        break;
+
+      case "chat":
+        appendChatMessage(msg.name, msg.text, msg.ts);
+        break;
+
+      case "room_list":
+        renderRoomBrowser(msg.rooms || []);
         break;
 
       case "player_joined":
@@ -322,7 +363,8 @@
 
   function showWaitingRoom() {
     showOnly("waitingRoom");
-    $("connStatus").hidden = false;
+    if ($("connStatus"))    $("connStatus").hidden    = false;
+    if ($("lobbyChatWrap")) $("lobbyChatWrap").hidden = false;
     $("roomCodeDisplay").textContent = myRoomCode || "------";
 
     // Difficulty info
@@ -350,15 +392,25 @@
       ? "Waiting for players…"
       : `${waitingPlayers.length} player${waitingPlayers.length > 1 ? "s" : ""} at the table`;
 
-    list.innerHTML = waitingPlayers.map((p, i) => {
+    list.innerHTML = waitingPlayers.map((p) => {
       const tags = [];
-      if (i === 0)              tags.push(`<span class="waiting-player-tag host-tag">HOST</span>`);
+      if (p.isHost)             tags.push(`<span class="waiting-player-tag host-tag">HOST</span>`);
       if (p.id === myPlayerId)  tags.push(`<span class="waiting-player-tag you-tag">YOU</span>`);
       const dotClass = p.connected === false ? "offline" : "online";
+
+      let hostControls = "";
+      if (isHost && p.id !== myPlayerId) {
+        hostControls = `<div class="host-controls" style="margin-left:auto;display:flex;gap:4px">
+          <button class="host-ctrl-btn host-btn" data-action="makehost" data-player="${esc(p.id)}" type="button" title="Make Host">★</button>
+          <button class="host-ctrl-btn kick-btn" data-action="kick" data-player="${esc(p.id)}" type="button" title="Kick player">✕</button>
+        </div>`;
+      }
+
       return `<li class="waiting-player">
         <span class="player-status-dot ${dotClass}"></span>
         <span class="waiting-player-name">${esc(p.name)}</span>
         ${tags.join("")}
+        ${hostControls}
       </li>`;
     }).join("");
   }
@@ -738,7 +790,35 @@
       setConnStatus("reconnecting");
       connectWS();
     }
+    // Pre-load room browser
+    if (wsReady) sendWS({ type: "browse_rooms" });
   });
+
+  // ── Quick Match button ──
+  const qmBtn = $("quickMatch");
+  if (qmBtn) {
+    qmBtn.addEventListener("click", () => {
+      const name = $("createName").value.trim() || "Player";
+      if (!wsReady) { showToast("Connecting to server… try again.", true); return; }
+      sendWS({ type: "quick_match", name, difficulty: selectedDiff });
+    });
+  }
+
+  // ── Room browser: join from list ──
+  const rbWrap = $("roomBrowserWrap");
+  if (rbWrap) {
+    rbWrap.addEventListener("click", e => {
+      const btn = e.target.closest("[data-join-code]");
+      if (!btn) return;
+      const code = btn.dataset.joinCode;
+      const name = $("joinName").value.trim() || $("createName").value.trim() || "Player";
+      if (!wsReady) { showToast("Connecting…", true); return; }
+      sendWS({ type: "join_room", name, code });
+    });
+    // Refresh room list button
+    const refreshBtn = $("refreshRooms");
+    if (refreshBtn) refreshBtn.addEventListener("click", () => { if (wsReady) sendWS({ type: "browse_rooms" }); });
+  }
 
   $("goOffline").addEventListener("click", () => {
     mode = "offline";
@@ -806,6 +886,27 @@
 
   // ── Waiting room ──
   $("startOnlineGame").addEventListener("click", () => sendWS({ type: "start_game" }));
+
+  // ── Host controls: kick / transfer host ──
+  $("waitingPlayerList").addEventListener("click", e => {
+    const kickBtn     = e.target.closest("[data-kick]");
+    const makeHostBtn = e.target.closest("[data-make-host]");
+    if (kickBtn)     sendWS({ type: "kick_player",    targetId: kickBtn.dataset.kick });
+    if (makeHostBtn) sendWS({ type: "transfer_host",  targetId: makeHostBtn.dataset.makeHost });
+  });
+
+  // ── Lobby chat ──
+  const chatInput = $("lobbyChatInput");
+  const chatSend  = $("lobbyChatSend");
+  function sendChat() {
+    if (!chatInput) return;
+    const text = chatInput.value.trim();
+    if (!text || !wsReady) return;
+    sendWS({ type: "chat", text });
+    chatInput.value = '';
+  }
+  if (chatSend)  chatSend.addEventListener("click", sendChat);
+  if (chatInput) chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
 
   $("leaveRoom").addEventListener("click", () => {
     if (ws) { ws.close(); ws = null; wsReady = false; }

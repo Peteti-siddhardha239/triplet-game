@@ -1,6 +1,6 @@
 /**
- * Triplet Game Engine v2
- * Supports both browser (window.TripletEngine) and Node.js (module.exports).
+ * Time Trotter Game Engine v2
+ * Supports both browser (window.TimeTrotterEngine / window.TripletEngine) and Node.js (module.exports).
  *
  * DIFFICULTY CHANGES (v2):
  *  - Memory decay: knownCardIds "fade" after decayRounds full rounds
@@ -11,11 +11,12 @@
  *  - _forceAdvanceTurn(): for server-side turn-timer expiry
  *  - Tracks seenSlots and askedPlayers for client-side UI disabling
  */
-(function attachTripletEngine(root, factory) {
+(function attachTimeTrotterEngine(root, factory) {
   const api = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = api;
-  root.TripletEngine = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function createTripletEngine() {
+  root.TimeTrotterEngine = api;
+  root.TripletEngine = api; // Backwards compatibility alias
+})(typeof globalThis !== "undefined" ? globalThis : this, function createTimeTrotterEngine() {
   "use strict";
 
   const VALUES = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, "+2", "+4"]);
@@ -63,7 +64,7 @@
     return `${card.value} ${card.colour}`;
   }
 
-  class TripletGame {
+  class TimeTrotterGame {
     /**
      * @param {object} opts
      * @param {string[]} opts.playerNames   - Display names (3–5)
@@ -73,11 +74,11 @@
      */
     constructor({ playerNames, playerIds = null, rng = Math.random, difficulty = "normal" } = {}) {
       assert(Array.isArray(playerNames), "Add between three and five players to start.");
-      assert(CONFIGURATIONS[playerNames.length], "Triplet supports three, four, or five players.");
+      assert(CONFIGURATIONS[playerNames.length], "Time Trotter supports three, four, or five players.");
       assert(typeof rng === "function", "The randomizer must be a function.");
 
       this.rng = rng;
-      this.difficulty = CONFIGURATIONS[difficulty] ? difficulty : "normal";
+      this.difficulty = DIFFICULTY_CONFIG[difficulty] ? difficulty : "normal";
       this.diffConfig = DIFFICULTY_CONFIG[this.difficulty];
       this.configuration = CONFIGURATIONS[playerNames.length];
       this.setsToWin = this.diffConfig.setsToWin;
@@ -242,6 +243,7 @@
     /**
      * Returns VALUES the current player can legally claim as a triplet.
      * Includes memory-decay: cards known more than decayRounds×playerCount turns ago are stale.
+     * If all 3 cards of a rank are located and fresh, any player who deduced them can claim.
      */
     readyTriplets() {
       const player = this.currentPlayer;
@@ -251,7 +253,6 @@
         const rankCards = this.cards.filter(
           (c) => c.value === value && !this.removedCardIds.has(c.id),
         );
-        const ownsOne = rankCards.some((c) => player.hand.includes(c.id));
         const allLocated = rankCards.length === 3 && rankCards.every((c) => {
           if (player.hand.includes(c.id)) return true; // Own cards: always known
           if (!this.knownCardIds.has(c.id)) return false;
@@ -259,19 +260,30 @@
           const age = this.turnNumber - (this.revealAge.get(c.id) ?? 0);
           return age <= decayLimit;
         });
-        return ownsOne && allLocated;
+        return allLocated;
       });
     }
 
     /**
-     * Claim a triplet. Validates server-side. Removes cards and updates score.
-     * A wrong call (caught by caller) should set player.penalized = true.
+     * Claim a triplet. Validates server-side / engine-side.
+     * If claim is invalid, penalizes current player, records event, and advances turn.
      */
     claimTriplet(rawValue) {
       assert(!this.isFinished, "The game is already over.");
       const value = normaliseValue(rawValue);
       assert(value !== undefined, "Choose a valid card value for the triplet.");
-      assert(this.readyTriplets().includes(value), "That triplet has not been fully located yet.");
+
+      if (!this.readyTriplets().includes(value)) {
+        const offender = this.currentPlayer;
+        offender.penalized = true;
+        this._record({
+          type: "penalty",
+          actorId: offender.id,
+          message: `${offender.name} called an invalid triplet (${value})! Next turn skipped.`,
+        });
+        this._advanceTurn();
+        return { wrongCall: true, penalisedPlayer: offender, value, advanced: true };
+      }
 
       const cardIds = this.cards
         .filter((c) => c.value === value && !this.removedCardIds.has(c.id))
@@ -394,5 +406,18 @@
     }
   }
 
-  return Object.freeze({ VALUES, COLOURS, CONFIGURATIONS, DIFFICULTY_CONFIG, TripletGame, cardLabel, valueWeight, normaliseValue });
+  const TripletGame = TimeTrotterGame; // Alias for backwards compatibility
+
+  return Object.freeze({
+    VALUES,
+    COLOURS,
+    CONFIGURATIONS,
+    DIFFICULTY_CONFIG,
+    TimeTrotterGame,
+    TripletGame,
+    cardLabel,
+    valueWeight,
+    normaliseValue,
+  });
 });
+

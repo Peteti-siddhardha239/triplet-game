@@ -1,6 +1,6 @@
-# Triplet
+# Time Trotter
 
-Open `index.html` in any modern desktop or mobile browser. It is a self-contained local pass-and-play game with no installation, web server, or internet connection required.
+Open `index.html` in any modern desktop or mobile browser. It is a self-contained memory card game supporting both real-time online multiplayer and local pass-and-play.
 
 ## Included rules
 

@@ -1,14 +1,20 @@
 {
   "name": "time-trotter",
-  "version": "2.0.0",
-  "description": "Time Trotter — online multiplayer memory card game",
+  "version": "3.0.0",
+  "author": "Jagadeesh <chjagadeesh.gdvl@gmail.com>",
+  "description": "Time Trotter — online multiplayer memory card game with accounts, ELO leaderboard & admin panel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "better-sqlite3": "^9.4.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.13",
+    "dotenv": "^16.4.5"
   },
   "engines": {
     "node": ">=18.0.0"

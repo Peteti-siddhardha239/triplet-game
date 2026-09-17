@@ -22,23 +22,142 @@
       <span class="conn-ping" id="connPing"></span>
     </div>
 
+    <!-- ELO notification banner -->
+    <div class="elo-notif" id="eloNotif" hidden aria-live="polite">
+      <div class="elo-notif-content" id="eloNotifContent"></div>
+    </div>
+
     <main class="shell">
       <header class="site-header">
         <a class="brand" href="#" id="brandHome" aria-label="Go to Time Trotter home">
           <span class="brand-mark" aria-hidden="true">T</span>
           <span>
             <strong>TIME TROTTER</strong>
-            <small>public clues · private hands</small>
+            <small>public clues &middot; private hands</small>
           </span>
         </a>
         <div class="header-right">
           <span class="difficulty-badge" id="difficultyBadge" hidden aria-label="Hard difficulty mode">⚡ HARD</span>
+          <!-- Profile badge (shown when logged in) -->
+          <div class="profile-badge" id="profileBadge" hidden>
+            <div class="profile-avatar" id="profileAvatar">?</div>
+            <div class="profile-info">
+              <span class="profile-username" id="profileUsername">Guest</span>
+              <span class="profile-elo" id="profileElo">ELO —</span>
+            </div>
+            <div class="profile-menu">
+              <button class="profile-menu-item" id="openLeaderboard" type="button">🏆 Leaderboard</button>
+              <button class="profile-menu-item" id="openAdminPanel" type="button" hidden>🛡️ Admin Panel</button>
+              <button class="profile-menu-item profile-logout" id="logoutBtn" type="button">🚪 Logout</button>
+            </div>
+          </div>
+          <!-- Auth button (shown when logged out) -->
+          <button class="auth-trigger-btn" id="authTriggerBtn" type="button">👤 Sign In</button>
+          <button class="leaderboard-trigger-btn" id="leaderboardTriggerBtn" type="button" title="Leaderboard">🏆</button>
           <button class="text-button" id="openRules" type="button">How to play</button>
         </div>
       </header>
 
+      <!-- ═══════════════════════════════════════════════════════
+           AUTH GATE MODAL
+      ═══════════════════════════════════════════════════════ -->
+      <dialog class="modal auth-modal" id="authGate" aria-labelledby="authGateTitle">
+        <div class="auth-card">
+          <button class="modal-close auth-close-btn" type="button" id="closeAuthBtn" aria-label="Close">✕</button>
+          <div class="auth-tabs" role="tablist">
+            <button class="auth-tab active" id="tab-login" role="tab" aria-selected="true" type="button">Sign In</button>
+            <button class="auth-tab" id="tab-register" role="tab" aria-selected="false" type="button">Create Account</button>
+          </div>
+
+          <!-- Login form -->
+          <form class="auth-form" id="loginForm" novalidate>
+            <div class="auth-form-header">
+              <h1 id="authGateTitle">Welcome back</h1>
+              <p class="quiet">Sign in to track your ELO and appear on the leaderboard.</p>
+            </div>
+            <div class="form-field">
+              <label for="loginIdentifier">Username, Email, or Phone Number</label>
+              <input type="text" id="loginIdentifier" autocomplete="username" placeholder="e.g. sidhartha, email@domain.com, or +1234567890" required />
+            </div>
+            <div class="form-field">
+              <label for="loginPassword">Password</label>
+              <input type="password" id="loginPassword" autocomplete="current-password" placeholder="Your password" required />
+              <button type="button" class="forgot-link" id="forgotPasswordBtn">Forgot password?</button>
+            </div>
+            <div class="auth-error" id="loginError" role="alert" hidden></div>
+            <button type="submit" class="primary-button full-button" id="loginSubmit">Sign In</button>
+            <button type="button" class="outline-button full-button" id="guestModeBtn" style="margin-top:10px">🎮 Continue as Guest</button>
+          </form>
+
+          <!-- Register form -->
+          <form class="auth-form" id="registerForm" hidden novalidate>
+            <div class="auth-form-header">
+              <h1>Create your account</h1>
+              <p class="quiet">Join the leaderboard &amp; track your progress.</p>
+            </div>
+            <div class="form-field">
+              <label for="regUsername">Username <small>(3–20 chars, letters/numbers/_)</small></label>
+              <input type="text" id="regUsername" autocomplete="username" placeholder="e.g. sidhartha99" required />
+            </div>
+            <div class="form-field">
+              <label for="regEmail">Email Address</label>
+              <input type="email" id="regEmail" autocomplete="email" placeholder="your@email.com" required />
+            </div>
+            <div class="form-field">
+              <label for="regPhone">Phone Number <small>(Optional for login &amp; profile recovery)</small></label>
+              <input type="tel" id="regPhone" autocomplete="tel" placeholder="+1234567890" />
+            </div>
+            <div class="form-field">
+              <label for="regPassword">Password <small>(min 8 chars, 1 letter + 1 number)</small></label>
+              <input type="password" id="regPassword" autocomplete="new-password" placeholder="Strong password" required />
+            </div>
+            <div class="auth-error" id="registerError" role="alert" hidden></div>
+            <button type="submit" class="primary-button full-button" id="registerSubmit">Create Account</button>
+          </form>
+
+          <!-- OTP verification form -->
+          <form class="auth-form" id="otpForm" hidden novalidate>
+            <div class="auth-form-header">
+              <div class="otp-icon">📧</div>
+              <h1>Verify your account</h1>
+              <p class="quiet">Enter the 6-digit code sent to your email address.<br/><small style="color: #94a3b8;">(If not found in Inbox, please check your <strong>Spam / Junk / Promotions</strong> folder)</small></p>
+            </div>
+            <div class="form-field">
+              <label for="otpCode">6-Digit Code</label>
+              <input type="text" id="otpCode" maxlength="6" inputmode="numeric" pattern="\d{6}" placeholder="000000" required autocomplete="one-time-code" class="otp-input" />
+            </div>
+            <div class="auth-error" id="otpError" role="alert" hidden></div>
+            <button type="submit" class="primary-button full-button" id="otpSubmit">Verify &amp; Login</button>
+            <button type="button" class="outline-button full-button" id="resendOtpBtn" style="margin-top:10px">Resend Code</button>
+          </form>
+
+          <!-- Forgot password form -->
+          <form class="auth-form" id="forgotForm" hidden novalidate>
+            <div class="auth-form-header">
+              <h1>Reset password</h1>
+              <p class="quiet">Enter the reset code sent to your email, then choose a new password.</p>
+            </div>
+            <div class="form-field">
+              <label for="forgotEmail">Email address</label>
+              <input type="email" id="forgotEmail" placeholder="your@email.com" required />
+            </div>
+            <div class="form-field" id="resetCodeField" hidden>
+              <label for="resetCode">Reset Code</label>
+              <input type="text" id="resetCode" maxlength="6" inputmode="numeric" class="otp-input" placeholder="000000" />
+            </div>
+            <div class="form-field" id="newPassField" hidden>
+              <label for="newPassword">New Password</label>
+              <input type="password" id="newPassword" placeholder="New strong password" />
+            </div>
+            <div class="auth-error" id="forgotError" role="alert" hidden></div>
+            <button type="submit" class="primary-button full-button" id="forgotSubmit">Send Reset Code</button>
+            <button type="button" class="outline-button full-button" id="backToLoginBtn" style="margin-top:10px">← Back to login</button>
+          </form>
+        </div>
+      </dialog>
+
       <!-- ══════════════════════════════════════════════════════════
-           MODE SELECT
+           MODE SELECT (LANDING PAGE)
       ══════════════════════════════════════════════════════════ -->
       <section class="mode-select" id="modeSelect" aria-labelledby="modeTitle">
         <div class="mode-hero">
@@ -327,41 +446,49 @@
     <!-- Rules dialog -->
     <dialog class="rules-dialog" id="rulesDialog" aria-labelledby="rulesTitle">
       <button class="dialog-close" id="closeRules" type="button" aria-label="Close rules">×</button>
-      <div class="eyebrow">Time Trotter rulebook v2</div>
-      <h2 id="rulesTitle">How to play at the table</h2>
-      <div class="rulebook-grid">
-        <section>
-          <h3>The deck and deal</h3>
-          <p>The deck has 36 cards: red, blue, and green copies of 0–9, +2, and +4.</p>
-          <ul>
-            <li>3 players: 10 cards each, 2×3 matrix</li>
-            <li>4 players: 8 cards each, 2×2 matrix</li>
-            <li>5 players: 6 cards each, 2×3 matrix</li>
+      <div class="eyebrow">⏳ TIME TROTTER — SIMPLE RULEBOOK</div>
+      <h2 id="rulesTitle" style="color:#38bdf8;margin-bottom:12px">How To Play &amp; Win</h2>
+      
+      <div class="rulebook-grid" style="display:grid;grid-template-columns:1fr;gap:14px;max-height:65vh;overflow-y:auto;padding-right:8px">
+        <section style="background:#1e293b;padding:16px 20px;border-radius:12px;border:1px solid rgba(56,189,248,0.35);color:#f8fafc">
+          <h3 style="color:#fbbf24;margin-top:0;font-size:1.18rem;font-weight:800">🎯 1. The Simple Goal (How to Win)</h3>
+          <p style="margin:4px 0 0 0;line-height:1.6;color:#f1f5f9">Your goal is to find <strong style="color:#ffffff">3 matching cards</strong> of the exact same number (for example: 🔴 Red 7, 🔵 Blue 7, 🟢 Green 7).</p>
+          <p style="margin:6px 0 0 0;color:#38bdf8;font-size:0.95rem"><strong style="color:#38bdf8">The first player to get 3 matching sets (Triplets) wins the game!</strong></p>
+        </section>
+
+        <section style="background:#1e293b;padding:16px 20px;border-radius:12px;border:1px solid rgba(56,189,248,0.35);color:#f8fafc">
+          <h3 style="color:#fbbf24;margin-top:0;font-size:1.18rem;font-weight:800">🃏 2. The Cards</h3>
+          <p style="margin:4px 0 0 0;line-height:1.6;color:#f1f5f9">Cards are numbered <strong style="color:#ffffff">0 to 9</strong>, plus <strong style="color:#ffffff">+2</strong> and <strong style="color:#ffffff">+4</strong>. Every number exists in 3 colors: <strong style="color:#ef4444">Red</strong>, <strong style="color:#3b82f6">Blue</strong>, and <strong style="color:#10b981">Green</strong>. Some cards are in players' hands, and some are face-down on the center board.</p>
+        </section>
+
+        <section style="background:#1e293b;padding:16px 20px;border-radius:12px;border:1px solid rgba(56,189,248,0.35);color:#f8fafc">
+          <h3 style="color:#fbbf24;margin-top:0;font-size:1.18rem;font-weight:800">👀 3. Your Turn (You get 2 moves)</h3>
+          <p style="margin:4px 0 8px 0;line-height:1.6;color:#f1f5f9">On your turn, you get <strong style="color:#ffffff">2 moves (2 clues)</strong> to look at hidden cards:</p>
+          <ul style="margin:0;padding-left:22px;line-height:1.7;color:#f1f5f9">
+            <li><strong style="color:#ffffff">Option A:</strong> Ask any player to reveal their <strong style="color:#ffffff">Highest</strong> or <strong style="color:#ffffff">Lowest</strong> card.</li>
+            <li><strong style="color:#ffffff">Option B:</strong> Click and flip 1 card face-up from the center board.</li>
+          </ul>
+          <p style="margin:8px 0 0 0;color:#f43f5e;font-size:0.92rem;font-weight:600">⚡ <em>Cards stay visible for only 4 seconds! Remember where they are!</em></p>
+        </section>
+
+        <section style="background:#1e293b;padding:16px 20px;border-radius:12px;border:1px solid rgba(251,191,36,0.4);color:#f8fafc">
+          <h3 style="color:#fbbf24;margin-top:0;font-size:1.18rem;font-weight:800">🎁 4. Secret Bonus Move!</h3>
+          <p style="margin:4px 0 0 0;line-height:1.6;color:#f1f5f9">If the 2 cards you look at during your turn have the <strong style="color:#ffffff">EXACT SAME NUMBER</strong> (e.g. you saw two 5s), you instantly get a <strong style="color:#fbbf24">FREE 3rd Move</strong> on that turn!</p>
+        </section>
+
+        <section style="background:#1e293b;padding:16px 20px;border-radius:12px;border:1px solid rgba(52,211,153,0.4);color:#f8fafc">
+          <h3 style="color:#34d399;margin-top:0;font-size:1.18rem;font-weight:800">🏆 5. Claiming a Triplet (Scoring)</h3>
+          <p style="margin:4px 0 0 0;line-height:1.6;color:#f1f5f9">When you know where all 3 cards of a number are, select the number and click <strong style="color:#ffffff">"Claim Triplet"</strong>!</p>
+          <ul style="margin:6px 0 0 0;padding-left:22px;line-height:1.7;color:#f1f5f9">
+            <li><strong style="color:#34d399">Right Guess:</strong> You lock in that Triplet point!</li>
+            <li><strong style="color:#f43f5e">Wrong Guess:</strong> You lose your next turn as a penalty!</li>
           </ul>
         </section>
-        <section>
-          <h3>Guesses &amp; Matrix Flips</h3>
-          <p>Each turn gives you 2 guesses (clues). Ask an opponent for their high or low card, or flip a matrix card. Each action costs 1 guess.</p>
-          <p>All reveals vanish after 3–4 seconds. Memory is the key.</p>
-        </section>
-        <section>
-          <h3>Bonus Guess Reward</h3>
-          <p>If your 2 guesses reveal the exact same card number/value, you earn a 3rd bonus guess for that turn! In Hard mode, both revealed cards must be new discoveries.</p>
-        </section>
-        <section>
-          <h3>Memory decay (Hard mode)</h3>
-          <p>In Hard mode, card locations "fade" after 3 full rounds. You must re-reveal a stale card before you can use it to validate a triplet claim.</p>
-        </section>
-        <section>
-          <h3>Triplets and victory</h3>
-          <p>Call a triplet when you know where all three copies of a value are. A wrong call skips your next turn. The first player to complete 3 triplets (Normal) or 4 triplets (Hard) wins. Completing the 7 triplet wins immediately in either mode.</p>
-        </section>
-        <section>
-          <h3>Turn timer</h3>
-          <p>In online games: Normal turns last 40 seconds, Hard turns last 25 seconds. The timer resets after each clue action. Time expiry auto-ends your turn.</p>
-        </section>
       </div>
-      <form method="dialog"><button class="primary-button" type="submit">Got it</button></form>
+      
+      <form method="dialog" style="margin-top:16px;text-align:center">
+        <button class="primary-button" type="submit" style="padding:10px 24px">Got It! Let's Play 🎮</button>
+      </form>
     </dialog>
 
     <!-- Card reveal popup -->
@@ -376,6 +503,123 @@
         </div>
       </div>
     </section>
+
+    <!-- ════════════════════ LEADERBOARD MODAL ════════════════════ -->
+    <dialog class="modal leaderboard-modal" id="leaderboardModal" aria-labelledby="lbTitle">
+      <div class="modal-header">
+        <h2 id="lbTitle">🏆 Leaderboard</h2>
+        <div class="modal-header-actions">
+          <button class="outline-button" id="lbMyRankBtn" type="button">My Rank</button>
+          <select id="lbSeasonSelect" class="lb-season-select">
+            <option value="">All Time</option>
+            <option value="1">Season 1</option>
+          </select>
+          <form method="dialog"><button class="modal-close" type="submit" aria-label="Close">✕</button></form>
+        </div>
+      </div>
+
+      <!-- My Rank card -->
+      <div class="my-rank-card" id="myRankCard" hidden>
+        <div class="my-rank-position">
+          <span class="rank-number" id="myRankNumber">#–</span>
+          <span class="rank-tier" id="myRankTier">—</span>
+        </div>
+        <div class="my-rank-stats">
+          <div class="rank-stat"><span id="myRankElo">1200</span><small>ELO</small></div>
+          <div class="rank-stat"><span id="myRankWins">0</span><small>Wins</small></div>
+          <div class="rank-stat"><span id="myRankGames">0</span><small>Played</small></div>
+          <div class="rank-stat"><span id="myRankWR">0%</span><small>Win Rate</small></div>
+        </div>
+        <div class="rank-history" id="myRankHistory"></div>
+      </div>
+
+      <!-- Search -->
+      <div class="lb-search-row">
+        <input type="search" id="lbSearch" placeholder="Search player…" class="lb-search" />
+      </div>
+
+      <!-- Table -->
+      <div class="lb-table-wrap">
+        <table class="lb-table" id="lbTable" aria-label="Leaderboard">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Tier</th>
+              <th>ELO</th>
+              <th>W</th>
+              <th>L</th>
+              <th>Win%</th>
+            </tr>
+          </thead>
+          <tbody id="lbBody">
+            <tr><td colspan="7" class="lb-loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="lb-pagination">
+        <button class="outline-button" id="lbPrevPage" type="button">&#8592; Prev</button>
+        <span id="lbPageInfo">Page 1</span>
+        <button class="outline-button" id="lbNextPage" type="button">Next &#8594;</button>
+      </div>
+    </dialog>
+
+    <!-- ════════════════════ ADMIN PANEL MODAL ════════════════════ -->
+    <dialog class="modal admin-modal" id="adminModal" aria-labelledby="adminTitle">
+      <div class="modal-header">
+        <h2 id="adminTitle">🛡️ Admin Panel</h2>
+        <form method="dialog"><button class="modal-close" type="submit" aria-label="Close">✕</button></form>
+      </div>
+
+      <!-- Stats -->
+      <div class="admin-stats-grid" id="adminStatsGrid">
+        <div class="admin-stat-card"><span id="asTotalUsers">-</span><small>Total Users</small></div>
+        <div class="admin-stat-card"><span id="asVerified">-</span><small>Verified</small></div>
+        <div class="admin-stat-card"><span id="asBanned">-</span><small>Banned</small></div>
+        <div class="admin-stat-card"><span id="asMatches">-</span><small>Total Matches</small></div>
+        <div class="admin-stat-card"><span id="asNewToday">-</span><small>New Today</small></div>
+        <div class="admin-stat-card"><span id="asMatchesToday">-</span><small>Games Today</small></div>
+      </div>
+
+      <!-- Announcement -->
+      <div class="admin-section">
+        <h3>Broadcast Announcement</h3>
+        <div class="form-field">
+          <textarea id="adminAnnouncement" rows="3" placeholder="Message to all connected players…" class="admin-textarea"></textarea>
+        </div>
+        <button class="primary-button" id="adminAnnounceBtn" type="button">📢 Send to All Players</button>
+      </div>
+
+      <!-- User management -->
+      <div class="admin-section">
+        <h3>User Management</h3>
+        <div class="lb-search-row">
+          <input type="search" id="adminUserSearch" placeholder="Search users…" class="lb-search" />
+          <button class="outline-button" id="adminUserSearchBtn" type="button">Search</button>
+        </div>
+        <div class="lb-table-wrap">
+          <table class="lb-table" id="adminUserTable">
+            <thead>
+              <tr><th>ID</th><th>Username</th><th>Email</th><th>ELO</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="adminUserBody">
+              <tr><td colspan="6" class="lb-loading">Enter a search query above.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- ELO update toast -->
+    <div class="elo-toast" id="eloToast" hidden role="status" aria-live="polite">
+      <div class="elo-toast-inner">
+        <span class="elo-toast-icon" id="eloToastIcon">🏆</span>
+        <div>
+          <div class="elo-toast-title" id="eloToastTitle">ELO Updated</div>
+          <div class="elo-toast-delta" id="eloToastDelta">+0</div>
+        </div>
+      </div>
+    </div>
 
     <script src="game-engine.js"></script>
     <script src="app.js"></script>

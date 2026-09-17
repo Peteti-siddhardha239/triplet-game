@@ -28,6 +28,12 @@
   let myPlayerId     = null;
   let myRoomCode     = null;
   let isHost         = false;
+
+  /* Auth state — tokens kept in memory (not localStorage) for XSS safety */
+  let authAccessToken = null;      // short-lived JWT
+  let authUser        = null;      // { id, username, email, is_admin, elo }
+  let pendingOtpEmail = null;      // email awaiting OTP verification
+  let forgotEmailSent = false;     // whether reset-code phase has started
   let onlineState    = null;    // latest state_update from server
   let waitingPlayers = [];      // [{id,name,connected}]
   let selectedDiff   = "normal";
@@ -60,11 +66,44 @@
       .replace(/'/g,"&#039;");
   }
 
+  const CARD_DESIGN_DATA = {
+    "0":  { theme: "red",    topIcon: "✦",  motto: "A NEW<br/>BEGINNING",        badgeIcon: "⌖" },
+    "1":  { theme: "blue",   topIcon: "🌙", motto: "ONE STEP<br/>AHEAD",         badgeIcon: "►" },
+    "2":  { theme: "green",  topIcon: "🍃", motto: "TWO PATHS<br/>MORE CHOICES",  badgeIcon: "△" },
+    "3":  { theme: "gold",   topIcon: "✨", motto: "THREE<br/>POSSIBILITIES",     badgeIcon: "☘" },
+    "4":  { theme: "purple", topIcon: "🪐", motto: "FOUR IDEAS<br/>FURTHER",      badgeIcon: "⊞" },
+    "5":  { theme: "red",    topIcon: "✦",  motto: "FIVE MOMENTS<br/>STRONGER",   badgeIcon: "⌛" },
+    "6":  { theme: "blue",   topIcon: "🌙", motto: "SIX WAYS<br/>BOLDER",         badgeIcon: "⬡" },
+    "7":  { theme: "green",  topIcon: "🍃", motto: "SEVEN STEPS<br/>BEYOND",      badgeIcon: "⇡" },
+    "8":  { theme: "gold",   topIcon: "✨", motto: "EIGHT IDEAS<br/>GREATER",     badgeIcon: "∞" },
+    "9":  { theme: "purple", topIcon: "🪐", motto: "NINE STORIES<br/>FOREVER",     badgeIcon: "🌀" },
+    "+2": { theme: "teal",   topIcon: "⚡", motto: "CHRONO<br/>BOOST",            badgeIcon: "⚡" },
+    "+4": { theme: "teal",   topIcon: "🌟", motto: "TIME<br/>WARP",               badgeIcon: "✦" },
+  };
+
   function cardMarkup(card) {
-    return `<div class="playing-card ${card.colour}" aria-label="${esc(card.value)} ${card.colour}">
-      <span class="card-corner top">${esc(card.value)}</span>
-      <span class="uno-oval"><span>${esc(card.value)}</span></span>
-      <span class="card-corner bottom">${esc(card.value)}</span>
+    if (!card) return "";
+    const valStr = String(card.value);
+    const design = CARD_DESIGN_DATA[valStr] || { theme: card.colour || "blue", topIcon: "✦", motto: "TIME<br/>TROTTER", badgeIcon: "✦" };
+    
+    return `<div class="playing-card tt-card theme-${design.theme} suit-${card.colour}" aria-label="${esc(card.value)} ${card.colour}">
+      <div class="tt-card-spine"></div>
+      <div class="tt-card-header">
+        <div class="tt-card-brand">TIME<br/>TRÖTTER</div>
+        <div class="tt-card-top-icon">${design.topIcon}</div>
+      </div>
+      <div class="tt-tech-gauge">
+        <span class="tt-gauge-dot top"></span>
+        <span class="tt-gauge-line"></span>
+        <span class="tt-gauge-dot bottom"></span>
+      </div>
+      <div class="tt-card-center-val">${esc(card.value)}</div>
+      <div class="tt-card-footer">
+        <div class="tt-card-motto">${design.motto}</div>
+        <div class="tt-card-badge-triangle">
+          <span class="tt-card-badge-icon">${design.badgeIcon}</span>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -131,12 +170,13 @@
   /* ─────────────────────────────────────────────────────────────
      Screen management
   ───────────────────────────────────────────────────────────── */
-  const SCREENS = ["modeSelect","onlineLobby","waitingRoom","lobby","game"];
+  const SCREENS = ["authGate","modeSelect","onlineLobby","waitingRoom","lobby","game"];
 
   function showOnly(id) {
     SCREENS.forEach(s => { const el = $(s); if (el) el.hidden = (s !== id); });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+  window.showOnly = showOnly;
 
   /* ─────────────────────────────────────────────────────────────
      WebSocket client
@@ -779,9 +819,9 @@
   ───────────────────────────────────────────────────────────── */
 
   // ── Mode select ──
-  $("goOnline").addEventListener("click", () => {
+  $("goOnline")?.addEventListener("click", () => {
     mode = "online";
-    $("connStatus").hidden = false;
+    if ($("connStatus")) $("connStatus").hidden = false;
     showOnly("onlineLobby");
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       setConnStatus("reconnecting");
@@ -795,7 +835,7 @@
   const qmBtn = $("quickMatch");
   if (qmBtn) {
     qmBtn.addEventListener("click", () => {
-      const name = $("createName").value.trim() || "Player";
+      const name = $("createName")?.value.trim() || "Player";
       if (!wsReady) { showToast("Connecting to server… try again.", true); return; }
       sendWS({ type: "quick_match", name, difficulty: selectedDiff });
     });
@@ -808,7 +848,7 @@
       const btn = e.target.closest("[data-join-code]");
       if (!btn) return;
       const code = btn.dataset.joinCode;
-      const name = $("joinName").value.trim() || $("createName").value.trim() || "Player";
+      const name = $("joinName")?.value.trim() || $("createName")?.value.trim() || "Player";
       if (!wsReady) { showToast("Connecting…", true); return; }
       sendWS({ type: "join_room", name, code });
     });
@@ -817,40 +857,44 @@
     if (refreshBtn) refreshBtn.addEventListener("click", () => { if (wsReady) sendWS({ type: "browse_rooms" }); });
   }
 
-  $("goOffline").addEventListener("click", () => {
+  $("goOffline")?.addEventListener("click", () => {
     mode = "offline";
-    $("connStatus").hidden = true;
+    if ($("connStatus")) $("connStatus").hidden = true;
     showOnly("lobby");
     renderOfflineLobby();
   });
 
-  $("backToMode").addEventListener("click", () => {
+  $("backToMode")?.addEventListener("click", () => {
     mode = null;
-    $("connStatus").hidden = true;
+    if ($("connStatus")) $("connStatus").hidden = true;
     showOnly("modeSelect");
   });
 
-  $("brandHome").addEventListener("click", (e) => {
+  $("brandHome")?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (!$("game").hidden) {
+    if ($("game") && !$("game").hidden) {
       const confirm = mode === "online"
         ? window.confirm("Leave the current game? You can rejoin within 60 seconds.")
         : true;
-      if (confirm) {
-        stopTimer();
-        clearTimeout(revealTimer);
-        previewSlot = null; activeReveal = null;
-        $("revealPopup").hidden = true;
-        mode = null;
-        game = null;
-        $("connStatus").hidden = true;
-        showOnly("modeSelect");
-      }
+      if (!confirm) return;
+      stopTimer();
+      clearTimeout(revealTimer);
+      previewSlot = null; activeReveal = null;
+      if ($("revealPopup")) $("revealPopup").hidden = true;
+      mode = null;
+      game = null;
+      if ($("connStatus")) $("connStatus").hidden = true;
+    }
+    const user = window._auth ? window._auth.getUser() : null;
+    if (user) {
+      showOnly("modeSelect");
+    } else {
+      showOnly("authGate");
     }
   });
 
   // ── Online lobby: difficulty picker ──
-  $("diffPicker").addEventListener("click", (e) => {
+  $("diffPicker")?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-diff]");
     if (!btn) return;
     selectedDiff = btn.dataset.diff;
@@ -863,29 +907,29 @@
   });
 
   // ── Create room ──
-  $("createRoom").addEventListener("click", () => {
-    const name = $("createName").value.trim() || "Player";
+  $("createRoom")?.addEventListener("click", () => {
+    const name = $("createName")?.value.trim() || "Player";
     if (!wsReady) { showToast("Connecting to server… try again in a moment.", true); return; }
     sendWS({ type: "create_room", name, difficulty: selectedDiff });
   });
-  $("createName").addEventListener("keydown", e => { if (e.key === "Enter") $("createRoom").click(); });
+  $("createName")?.addEventListener("keydown", e => { if (e.key === "Enter") $("createRoom")?.click(); });
 
   // ── Join room ──
-  $("joinRoom").addEventListener("click", () => {
-    const name = $("joinName").value.trim() || "Player";
-    const code = $("joinCode").value.trim().toUpperCase();
+  $("joinRoom")?.addEventListener("click", () => {
+    const name = $("joinName")?.value.trim() || "Player";
+    const code = $("joinCode")?.value.trim().toUpperCase() || "";
     if (code.length !== 6) { showToast("Enter a valid 6-character room code.", true); return; }
     if (!wsReady) { showToast("Connecting to server… try again in a moment.", true); return; }
     sendWS({ type: "join_room", name, code });
   });
-  $("joinCode").addEventListener("input",  e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""); });
-  $("joinCode").addEventListener("keydown", e => { if (e.key === "Enter") $("joinRoom").click(); });
+  $("joinCode")?.addEventListener("input",  e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""); });
+  $("joinCode")?.addEventListener("keydown", e => { if (e.key === "Enter") $("joinRoom")?.click(); });
 
   // ── Waiting room ──
-  $("startOnlineGame").addEventListener("click", () => sendWS({ type: "start_game" }));
+  $("startOnlineGame")?.addEventListener("click", () => sendWS({ type: "start_game" }));
 
   // ── Host controls: kick / transfer host ──
-  $("waitingPlayerList").addEventListener("click", e => {
+  $("waitingPlayerList")?.addEventListener("click", e => {
     const kickBtn     = e.target.closest("[data-kick]");
     const makeHostBtn = e.target.closest("[data-make-host]");
     if (kickBtn)     sendWS({ type: "kick_player",    targetId: kickBtn.dataset.kick });
@@ -905,47 +949,50 @@
   if (chatSend)  chatSend.addEventListener("click", sendChat);
   if (chatInput) chatInput.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
 
-  $("leaveRoom").addEventListener("click", () => {
+  $("leaveRoom")?.addEventListener("click", () => {
     if (ws) { ws.close(); ws = null; wsReady = false; }
     myPlayerId = null; myRoomCode = null; isHost = false;
     onlineState = null; waitingPlayers = [];
     stopTimer();
     mode = null;
-    $("connStatus").hidden = true;
+    if ($("connStatus")) $("connStatus").hidden = true;
     showOnly("modeSelect");
   });
 
-  $("copyCode").addEventListener("click", () => {
+  $("copyCode")?.addEventListener("click", () => {
     if (!myRoomCode) return;
     navigator.clipboard.writeText(myRoomCode)
       .then(() => {
-        $("copyLabel").textContent = "✓ Copied!";
-        $("copyCode").classList.add("copied");
-        setTimeout(() => { $("copyLabel").textContent = "⎘ Copy"; $("copyCode").classList.remove("copied"); }, 2200);
+        if ($("copyLabel")) $("copyLabel").textContent = "✓ Copied!";
+        if ($("copyCode")) $("copyCode").classList.add("copied");
+        setTimeout(() => {
+          if ($("copyLabel")) $("copyLabel").textContent = "⎘ Copy";
+          if ($("copyCode")) $("copyCode").classList.remove("copied");
+        }, 2200);
       })
       .catch(() => showToast("Code: " + myRoomCode, false));
   });
 
   // ── Offline lobby ──
-  $("countPicker").addEventListener("click", e => {
+  $("countPicker")?.addEventListener("click", e => {
     const btn = e.target.closest("[data-count]");
     if (!btn) return;
     selectedCount = Number(btn.dataset.count);
     renderOfflineLobby();
   });
-  $("startGame").addEventListener("click", startOfflineGame);
+  $("startGame")?.addEventListener("click", startOfflineGame);
 
   // ── New table (from game view) ──
-  $("newGame").addEventListener("click", () => {
+  $("newGame")?.addEventListener("click", () => {
     stopTimer();
     clearTimeout(revealTimer);
     previewSlot = null; activeReveal = null;
-    $("revealPopup").hidden = true;
+    if ($("revealPopup")) $("revealPopup").hidden = true;
     if (mode === "online") {
       if (ws) { ws.close(); ws = null; wsReady = false; }
       onlineState = null; myPlayerId = null; myRoomCode = null; waitingPlayers = [];
       mode = null;
-      $("connStatus").hidden = true;
+      if ($("connStatus")) $("connStatus").hidden = true;
       showOnly("modeSelect");
     } else {
       game = null;
@@ -955,7 +1002,7 @@
   });
 
   // ── In-game actions ──
-  $("game").addEventListener("click", e => {
+  $("game")?.addEventListener("click", e => {
 
     // Ask for high/low
     const askBtn = e.target.closest("[data-ask]");
@@ -1034,13 +1081,598 @@
   });
 
   // ── Rules dialog ──
-  $("openRules").addEventListener("click", ()  => $("rulesDialog").showModal());
-  $("closeRules").addEventListener("click", () => $("rulesDialog").close());
+  $("openRules")?.addEventListener("click", ()  => {
+    const rd = $("rulesDialog");
+    if (rd && !rd.open) rd.showModal();
+  });
+  $("closeRules")?.addEventListener("click", () => $("rulesDialog")?.close());
+  $("rulesDialog")?.addEventListener("click", (e) => {
+    if (e.target === $("rulesDialog")) $("rulesDialog").close();
+  });
 
   /* ─────────────────────────────────────────────────────────────
      Init
   ───────────────────────────────────────────────────────────── */
   updateDiffDesc("normal");
-  showOnly("modeSelect");
+  // NOTE: Auth is initialized by AuthModule below (after this IIFE closes).
+  // Do NOT call initAuth() here — it is not defined yet at this point.
+
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   AUTH CONTROLLER  (runs outside IIFE so it can access DOM globals)
+═══════════════════════════════════════════════════════════════════ */
+
+(function AuthModule() {
+  "use strict";
+
+  /* ── DOM shortcuts ── */
+  const $ = id => document.getElementById(id);
+  const showOnly = id => (window.showOnly ? window.showOnly(id) : null);
+
+  /* ── API base ── */
+  const API = "/api";
+
+  /* ── In-memory token store ── */
+  let accessToken = null;
+  let currentUser = null;
+  let pendingEmail = null;
+  let forgotPhase = "email"; // 'email' | 'code'
+
+  /* ── Expose to game IIFE ── */
+  window._auth = {
+    getToken: () => accessToken,
+    getUser:  () => currentUser,
+  };
+
+  /* ──────────────────────────────────────────────────────────────
+     Helpers
+  ─────────────────────────────────────────────────────────────── */
+
+  async function apiCall(method, path, body, token) {
+    const opts = {
+      method,
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    };
+    if (token) opts.headers["Authorization"] = `Bearer ${token}`;
+    if (body)  opts.body = JSON.stringify(body);
+    const res  = await fetch(API + path, opts);
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
+    return data;
+  }
+
+  function showAuthError(elId, msg) {
+    const el = $(elId);
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+  }
+  function clearAuthError(elId) {
+    const el = $(elId);
+    if (el) { el.hidden = true; el.textContent = ""; }
+  }
+
+  function setLoading(btnId, loading) {
+    const btn = $(btnId);
+    if (!btn) return;
+    btn.disabled = loading;
+    btn._origText = btn._origText || btn.textContent;
+    btn.textContent = loading ? "Please wait…" : btn._origText;
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Auth gate display
+  ─────────────────────────────────────────────────────────────── */
+
+  function showAuthGate() {
+    const ag = $("authGate");
+    if (!ag) return;
+    try {
+      if (!ag.open) ag.showModal();
+    } catch {
+      ag.setAttribute("open", "");
+    }
+  }
+
+  function hideAuthGate() {
+    const ag = $("authGate");
+    if (ag && ag.open) ag.close();
+    if (currentUser) {
+      if ($("authTriggerBtn")) $("authTriggerBtn").hidden = true;
+      if ($("profileBadge")) $("profileBadge").hidden = false;
+    }
+  }
+
+  function showForm(id) {
+    ["loginForm","registerForm","otpForm","forgotForm"].forEach(f => {
+      const el = $(f);
+      if (el) el.hidden = f !== id;
+    });
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Profile badge update
+  ─────────────────────────────────────────────────────────────── */
+
+  function updateProfileBadge(user, elo) {
+    if (!user) return;
+    const initial = user.username.charAt(0).toUpperCase();
+    $("profileAvatar").textContent   = initial;
+    $("profileUsername").textContent = user.username;
+    $("profileElo").textContent      = `ELO ${elo || user.elo || 1200}`;
+    if (user.is_admin) $("openAdminPanel").hidden = false;
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Token refresh (silent, runs every 13 min)
+  ─────────────────────────────────────────────────────────────── */
+
+  async function refreshTokenSilently() {
+    try {
+      const data = await apiCall("POST", "/auth/refresh");
+      accessToken = data.accessToken;
+    } catch {
+      // Refresh token expired — show auth gate
+      onLogout();
+    }
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     Login success handler
+  ─────────────────────────────────────────────────────────────── */
+
+  function onLoginSuccess(data) {
+    accessToken  = data.accessToken;
+    currentUser  = data.user;
+    hideAuthGate();
+    updateProfileBadge(currentUser);
+    // Silent refresh every 13 minutes
+    setInterval(refreshTokenSilently, 13 * 60 * 1000);
+    showEloToast(0, "Logged in as " + currentUser.username, false);
+  }
+
+  function onLogout() {
+    accessToken = null;
+    currentUser = null;
+    showAuthGate();
+    showForm("loginForm");
+  }
+
+  /* ──────────────────────────────────────────────────────────────
+     ELO Toast
+  ─────────────────────────────────────────────────────────────── */
+
+  function showEloToast(delta, titleOverride, isElo = true) {
+    const toast = $("eloToast");
+    if (!toast) return;
+    $("eloToastTitle").textContent = titleOverride || (isElo ? "ELO Updated" : "Welcome!");
+    const deltaEl = $("eloToastDelta");
+    if (isElo) {
+      deltaEl.textContent = delta >= 0 ? `+${delta}` : String(delta);
+      deltaEl.className = `elo-toast-delta ${delta < 0 ? "negative" : ""}`;
+    } else {
+      deltaEl.textContent = titleOverride ? "" : "";
+    }
+    toast.hidden = false;
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { toast.hidden = true; }, 5000);
+  }
+
+  // Listen for elo_update from WebSocket (dispatched by game IIFE)
+  document.addEventListener("elo_update", (e) => {
+    const { delta, eloAfter, position } = e.detail;
+    $("profileElo").textContent = `ELO ${eloAfter}`;
+    showEloToast(delta, position === 1 ? "🏆 Victory!" : "Match Result", true);
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     Tab switching
+  ─────────────────────────────────────────────────────────────── */
+
+  function switchTab(active) {
+    ["login", "register"].forEach(t => {
+      const tab = $(`tab-${t}`);
+      if (tab) {
+        tab.classList.toggle("active", t === active);
+        tab.setAttribute("aria-selected", t === active ? "true" : "false");
+      }
+    });
+    showForm(active === "login" ? "loginForm" : "registerForm");
+  }
+
+  $("tab-login")?.addEventListener("click",    () => switchTab("login"));
+  $("tab-register")?.addEventListener("click", () => switchTab("register"));
+
+  /* ──────────────────────────────────────────────────────────────
+     LOGIN
+  ─────────────────────────────────────────────────────────────── */
+
+  $("loginForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearAuthError("loginError");
+    const identifier = $("loginIdentifier").value.trim();
+    const password   = $("loginPassword").value;
+    if (!identifier || !password) return showAuthError("loginError", "Please fill in all fields.");
+    setLoading("loginSubmit", true);
+    try {
+      const data = await apiCall("POST", "/auth/login", { identifier, password });
+      onLoginSuccess(data);
+    } catch (err) {
+      showAuthError("loginError", err.message);
+    } finally {
+      setLoading("loginSubmit", false);
+    }
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     REGISTER
+  ─────────────────────────────────────────────────────────────── */
+
+  $("registerForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearAuthError("registerError");
+    const username = $("regUsername").value.trim();
+    const email    = $("regEmail").value.trim();
+    const phone    = $("regPhone")?.value.trim() || "";
+    const password = $("regPassword").value;
+    if (!username || !email || !password) return showAuthError("registerError", "Please fill in all required fields.");
+    setLoading("registerSubmit", true);
+    try {
+      await apiCall("POST", "/auth/register", { username, email, phone, password });
+      pendingEmail = email;
+      showForm("otpForm");
+      if ($("otpCode")) $("otpCode").value = "";
+    } catch (err) {
+      showAuthError("registerError", err.message);
+    } finally {
+      setLoading("registerSubmit", false);
+    }
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     OTP VERIFICATION
+  ─────────────────────────────────────────────────────────────── */
+
+  $("otpForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearAuthError("otpError");
+    const otp = $("otpCode").value.trim();
+    if (otp.length !== 6) return showAuthError("otpError", "Please enter the 6-digit code.");
+    setLoading("otpSubmit", true);
+    try {
+      const data = await apiCall("POST", "/auth/verify-email", { email: pendingEmail, otp });
+      // Fetch user profile
+      const me = await apiCall("GET", "/auth/me", null, data.accessToken);
+      onLoginSuccess({ accessToken: data.accessToken, user: { ...me, elo: me.elo || 1200 } });
+    } catch (err) {
+      showAuthError("otpError", err.message);
+    } finally {
+      setLoading("otpSubmit", false);
+    }
+  });
+
+  $("resendOtpBtn")?.addEventListener("click", async () => {
+    if (!pendingEmail) return;
+    try {
+      await apiCall("POST", "/auth/resend-otp", { email: pendingEmail, purpose: "verify_email" });
+      if ($("otpCode")) $("otpCode").value = "";
+      showAuthError("otpError", "✅ New verification code sent to your email!");
+    } catch (err) {
+      showAuthError("otpError", err.message);
+    }
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     FORGOT / RESET PASSWORD
+  ─────────────────────────────────────────────────────────────── */
+
+  $("forgotPasswordBtn")?.addEventListener("click", () => {
+    forgotPhase = "email";
+    $("resetCodeField").hidden = true;
+    $("newPassField").hidden   = true;
+    $("forgotSubmit")._origText = null;
+    $("forgotSubmit").textContent = "Send Reset Code";
+    clearAuthError("forgotError");
+    showForm("forgotForm");
+  });
+
+  $("backToLoginBtn")?.addEventListener("click", () => showForm("loginForm"));
+
+  $("forgotForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearAuthError("forgotError");
+
+    if (forgotPhase === "email") {
+      const email = $("forgotEmail").value.trim();
+      if (!email) return showAuthError("forgotError", "Please enter your email.");
+      setLoading("forgotSubmit", true);
+      try {
+        await apiCall("POST", "/auth/forgot-password", { email });
+        pendingEmail = email;
+        forgotPhase  = "code";
+        $("resetCodeField").hidden = false;
+        $("newPassField").hidden   = false;
+        $("forgotSubmit").textContent = "Reset Password";
+        $("forgotSubmit")._origText   = "Reset Password";
+        showAuthError("forgotError", "✅ If that email is registered, a code was sent.");
+      } catch (err) {
+        showAuthError("forgotError", err.message);
+      } finally {
+        setLoading("forgotSubmit", false);
+      }
+    } else {
+      const otp         = $("resetCode").value.trim();
+      const newPassword = $("newPassword").value;
+      if (!otp || !newPassword) return showAuthError("forgotError", "Please fill in the code and new password.");
+      setLoading("forgotSubmit", true);
+      try {
+        await apiCall("POST", "/auth/reset-password", { email: pendingEmail, otp, newPassword });
+        showAuthError("forgotError", "✅ Password reset! Please log in.");
+        setTimeout(() => showForm("loginForm"), 1500);
+      } catch (err) {
+        showAuthError("forgotError", err.message);
+      } finally {
+        setLoading("forgotSubmit", false);
+      }
+    }
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     GUEST MODE
+  ─────────────────────────────────────────────────────────────── */
+
+  $("guestModeBtn")?.addEventListener("click", () => {
+    currentUser = { username: "Guest", id: null, is_admin: false, elo: null };
+    if ($("profileBadge")) $("profileBadge").hidden = false;
+    if ($("authTriggerBtn")) $("authTriggerBtn").hidden = true;
+    if ($("profileAvatar")) $("profileAvatar").textContent = "G";
+    if ($("profileUsername")) $("profileUsername").textContent = "Guest";
+    if ($("profileElo")) $("profileElo").textContent = "No ELO (Guest)";
+    hideAuthGate();
+  });
+
+  $("closeAuthBtn")?.addEventListener("click", () => $("authGate")?.close());
+  $("authGate")?.addEventListener("click", (e) => {
+    if (e.target === $("authGate")) $("authGate").close();
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     LOGOUT
+  ─────────────────────────────────────────────────────────────── */
+
+  $("logoutBtn")?.addEventListener("click", async () => {
+    try { await apiCall("POST", "/auth/logout", null, accessToken); } catch {}
+    onLogout();
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     Auth trigger button (header)
+  ─────────────────────────────────────────────────────────────── */
+
+  $("authTriggerBtn")?.addEventListener("click", () => {
+    showAuthGate();
+    showForm("loginForm");
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     LEADERBOARD
+  ─────────────────────────────────────────────────────────────── */
+
+  let lbPage    = 1;
+  let lbSearch  = "";
+  let lbSeason  = "";
+  let lbTotal   = 0;
+  const LB_LIMIT = 25;
+
+  const TIER_COLORS = {
+    "Grand Master": { bg: "rgba(255,107,53,0.15)",  color: "#ff6b35" },
+    "Master":       { bg: "rgba(168,85,247,0.12)",  color: "#a855f7" },
+    "Diamond":      { bg: "rgba(56,189,248,0.12)",  color: "#38bdf8" },
+    "Platinum":     { bg: "rgba(52,211,153,0.12)",  color: "#34d399" },
+    "Gold":         { bg: "rgba(251,191,36,0.15)",  color: "#fbbf24" },
+    "Silver":       { bg: "rgba(148,163,184,0.15)", color: "#94a3b8" },
+    "Bronze":       { bg: "rgba(180,87,9,0.12)",    color: "#b45309" },
+  };
+
+  async function loadLeaderboard() {
+    const body = $("lbBody");
+    if (!body) return;
+    body.innerHTML = `<tr><td colspan="7" class="lb-loading">Loading…</td></tr>`;
+    try {
+      const params = new URLSearchParams({
+        page: lbPage, limit: LB_LIMIT, q: lbSearch,
+        ...(lbSeason ? { season: lbSeason } : {}),
+      });
+      const data = await apiCall("GET", `/leaderboard?${params}`);
+      lbTotal = data.total;
+      $("lbPageInfo").textContent = `Page ${lbPage} of ${data.totalPages || 1}`;
+      $("lbPrevPage").disabled = lbPage <= 1;
+      $("lbNextPage").disabled = lbPage >= (data.totalPages || 1);
+
+      body.innerHTML = data.players.map((p, i) => {
+        const rank    = (lbPage - 1) * LB_LIMIT + i + 1;
+        const medal   = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "";
+        const tier    = p.tier || {};
+        const tc      = TIER_COLORS[tier.label] || TIER_COLORS["Bronze"];
+        const isMe    = currentUser?.id === p.id;
+        return `
+          <tr${isMe ? " class='lb-my-row'" : ""}>
+            <td>${medal ? `<span class="lb-rank-medal">${medal}</span>` : `<span class="lb-rank-num">${rank}</span>`}</td>
+            <td>
+              <div class="lb-player-cell">
+                <div class="lb-avatar">${p.username.charAt(0).toUpperCase()}</div>
+                <span class="lb-username">${escHtml(p.username)}</span>
+                ${isMe ? '<span class="lb-you-badge">YOU</span>' : ""}
+              </div>
+            </td>
+            <td>
+              <span class="lb-tier-badge" style="background:${tc.bg};color:${tc.color}">
+                ${tier.icon || ""} ${tier.label || ""}
+              </span>
+            </td>
+            <td class="lb-elo-val">${p.elo}</td>
+            <td>${p.wins}</td>
+            <td>${p.losses}</td>
+            <td>${p.winRate}</td>
+          </tr>`;
+      }).join("") || `<tr><td colspan="7" class="lb-loading">No players found.</td></tr>`;
+    } catch (err) {
+      body.innerHTML = `<tr><td colspan="7" class="lb-loading">Failed to load: ${escHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  function escHtml(str) {
+    return String(str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  async function loadMyRank() {
+    if (!accessToken || !currentUser?.id) return;
+    try {
+      const data = await apiCall("GET", "/leaderboard/me", null, accessToken);
+      const card = $("myRankCard");
+      card.hidden = false;
+      $("myRankNumber").textContent = `#${data.rank}`;
+      $("myRankTier").textContent   = `${data.tier?.icon || ""} ${data.tier?.label || ""}`;
+      $("myRankElo").textContent    = data.elo;
+      $("myRankWins").textContent   = data.wins;
+      $("myRankGames").textContent  = data.games_played;
+      $("myRankWR").textContent     = data.winRate;
+
+      const hist = $("myRankHistory");
+      hist.innerHTML = (data.recentMatches || []).map(m =>
+        `<span class="rank-history-item ${m.position === 1 ? 'win' : 'loss'}">${m.position === 1 ? "W" : "L"} ${m.elo_delta >= 0 ? "+" : ""}${m.elo_delta}</span>`
+      ).join("");
+    } catch {}
+  }
+
+  function openLeaderboard() {
+    const modal = $("leaderboardModal");
+    if (!modal) return;
+    try {
+      if (!modal.open) modal.showModal();
+    } catch {
+      modal.setAttribute("open", "");
+    }
+    lbPage = 1; lbSearch = ""; lbSeason = "";
+    if ($("lbSearch")) $("lbSearch").value = "";
+    loadLeaderboard();
+    loadMyRank();
+  }
+
+  $("leaderboardModal")?.addEventListener("click", (e) => {
+    if (e.target === $("leaderboardModal")) $("leaderboardModal").close();
+  });
+  $("adminModal")?.addEventListener("click", (e) => {
+    if (e.target === $("adminModal")) $("adminModal").close();
+  });
+
+  $("openLeaderboard")?.addEventListener("click",        openLeaderboard);
+  $("leaderboardTriggerBtn")?.addEventListener("click",  openLeaderboard);
+  $("lbMyRankBtn")?.addEventListener("click",            loadMyRank);
+
+  $("lbPrevPage")?.addEventListener("click", () => { if (lbPage > 1) { lbPage--; loadLeaderboard(); } });
+  $("lbNextPage")?.addEventListener("click", () => { lbPage++; loadLeaderboard(); });
+  $("lbSeasonSelect")?.addEventListener("change", (e) => { lbSeason = e.target.value; lbPage = 1; loadLeaderboard(); });
+
+  let lbSearchTimer;
+  $("lbSearch")?.addEventListener("input", (e) => {
+    lbSearch = e.target.value.trim();
+    clearTimeout(lbSearchTimer);
+    lbSearchTimer = setTimeout(() => { lbPage = 1; loadLeaderboard(); }, 350);
+  });
+
+  /* ──────────────────────────────────────────────────────────────
+     ADMIN PANEL
+  ─────────────────────────────────────────────────────────────── */
+
+  async function loadAdminStats() {
+    try {
+      const data = await apiCall("GET", "/admin/stats", null, accessToken);
+      $("asTotalUsers").textContent  = data.totalUsers;
+      $("asVerified").textContent    = data.verifiedUsers;
+      $("asBanned").textContent      = data.bannedUsers;
+      $("asMatches").textContent     = data.totalMatches;
+      $("asNewToday").textContent    = data.newUsersToday;
+      $("asMatchesToday").textContent= data.matchesToday;
+    } catch {}
+  }
+
+  $("openAdminPanel")?.addEventListener("click", () => {
+    $("adminModal").showModal();
+    loadAdminStats();
+  });
+
+  $("adminAnnounceBtn")?.addEventListener("click", async () => {
+    const msg = $("adminAnnouncement")?.value.trim();
+    if (!msg) return;
+    try {
+      await apiCall("POST", "/admin/announce", { message: msg }, accessToken);
+      $("adminAnnouncement").value = "";
+      alert("Announcement sent!");
+    } catch (err) { alert(err.message); }
+  });
+
+  $("adminUserSearchBtn")?.addEventListener("click", async () => {
+    const q    = $("adminUserSearch")?.value.trim() || "";
+    const body = $("adminUserBody");
+    if (!body) return;
+    body.innerHTML = `<tr><td colspan="6" class="lb-loading">Searching…</td></tr>`;
+    try {
+      const data = await apiCall("GET", `/admin/users?q=${encodeURIComponent(q)}&limit=20`, null, accessToken);
+      body.innerHTML = data.users.map(u => `
+        <tr>
+          <td>${u.id}</td>
+          <td><strong>${escHtml(u.username)}</strong></td>
+          <td>${escHtml(u.email)}</td>
+          <td>${u.elo || 1200}</td>
+          <td>${u.is_banned ? "<span style='color:var(--red);font-weight:700'>Banned</span>" : u.is_verified ? "Active" : "Unverified"}</td>
+          <td>
+            ${u.is_banned
+              ? `<button class="admin-action-btn admin-action-unban" onclick="adminAction(${u.id},'unban')">Unban</button>`
+              : `<button class="admin-action-btn admin-action-ban" onclick="adminAction(${u.id},'ban')">Ban</button>`}
+          </td>
+        </tr>
+      `).join("") || `<tr><td colspan="6" class="lb-loading">No users found.</td></tr>`;
+    } catch (err) {
+      body.innerHTML = `<tr><td colspan="6" class="lb-loading">${escHtml(err.message)}</td></tr>`;
+    }
+  });
+
+  // Global admin action (called from table onclick)
+  window.adminAction = async function(userId, action) {
+    const reason = action === "ban" ? prompt("Ban reason:") : undefined;
+    if (action === "ban" && !reason) return;
+    try {
+      await apiCall("PATCH", `/admin/users/${userId}`, { action, reason }, accessToken);
+      $("adminUserSearchBtn").click(); // refresh table
+    } catch (err) { alert(err.message); }
+  };
+
+  /* ──────────────────────────────────────────────────────────────
+     INIT — try silent refresh first, else show auth gate
+  ─────────────────────────────────────────────────────────────── */
+
+  async function initAuthFlow() {
+    showOnly("modeSelect");
+
+    try {
+      // Try silent re-login via refresh cookie from previous session
+      const data = await apiCall("POST", "/auth/refresh");
+      accessToken = data.accessToken;
+      const me = await apiCall("GET", "/auth/me", null, accessToken);
+      onLoginSuccess({ accessToken, user: { ...me, elo: me.elo || 1200 } });
+    } catch {
+      // Unauthenticated: stay on landing page (modeSelect), show Sign In button
+      if ($("authTriggerBtn")) $("authTriggerBtn").hidden = false;
+      if ($("profileBadge")) $("profileBadge").hidden = true;
+    }
+  }
+
+  // Expose for external reference, then boot immediately
+  window.initAuth = initAuthFlow;
+  initAuthFlow();
 
 })();

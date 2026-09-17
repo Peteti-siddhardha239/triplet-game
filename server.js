@@ -1,7 +1,10 @@
 /**
- * Time Trotter — WebSocket + HTTP server (v2.1)
+ * Time Trotter — WebSocket + HTTP server (v3.0)
  *
- * FEATURES (v2.1):
+ * FEATURES (v3.0):
+ *  - Account system: register, login, JWT sessions, OTP email verification
+ *  - Leaderboard: ELO ratings recorded after every match
+ *  - Admin panel: user management, ban/unban, announcements
  *  - Quick Match: auto-pairs solo players into waiting rooms
  *  - Host transfer: if host disconnects, next player becomes host
  *  - GET /api/rooms: lobby browser (public room list)
@@ -12,12 +15,20 @@
  */
 
 "use strict";
+require("dotenv").config();
 
 const http = require("http");
 const fs   = require("fs");
 const path = require("path");
 const { WebSocketServer } = require("ws");
 const { TimeTrotterGame, TripletGame } = require("./game-engine.js");
+
+/* ── Auth / Leaderboard / Admin modules ─────────────────────── */
+const { handleAuth }        = require("./routes/auth.js");
+const { handleLeaderboard } = require("./routes/leaderboard.js");
+const { handleAdmin, setBroadcastFn } = require("./routes/admin.js");
+const db                    = require("./db/database.js");
+const { computeEloDeltas }  = require("./lib/elo.js");
 
 /* ═══════════════════════════════════════════════════════════════════
    Static file serving
@@ -37,11 +48,46 @@ const MIME = {
   ".woff2":"font/woff2",
 };
 
-const httpServer = http.createServer((req, res) => {
-  const url = req.url.split("?")[0];
+const httpServer = http.createServer(async (req, res) => {
+  const pathname = req.url.split("?")[0];
+
+  /* ── CORS preflight ── */
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin":  "*",
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    });
+    return res.end();
+  }
+
+  /* ── Auth API ── */
+  if (pathname.startsWith("/api/auth/")) {
+    try { await handleAuth(req, res, pathname); } catch (e) {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal server error." }));
+      }
+    }
+    return;
+  }
+
+  /* ── Leaderboard API ── */
+  if (pathname.startsWith("/api/leaderboard")) {
+    const result = handleLeaderboard(req, res, pathname);
+    if (result instanceof Promise) await result;
+    if (result !== null) return;
+  }
+
+  /* ── Admin API ── */
+  if (pathname.startsWith("/api/admin/")) {
+    const result = handleAdmin(req, res, pathname);
+    if (result instanceof Promise) await result;
+    if (result !== null) return;
+  }
 
   /* ── REST API ── */
-  if (url === "/api/rooms") {
+  if (pathname === "/api/rooms") {
     res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     const list = [...rooms.values()]
       .filter(r => !r.game)                          // only open lobbies
@@ -57,7 +103,7 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
-  if (url === "/api/stats") {
+  if (pathname === "/api/stats") {
     res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     res.end(JSON.stringify({
       rooms:        rooms.size,
@@ -69,7 +115,7 @@ const httpServer = http.createServer((req, res) => {
   }
 
   /* ── Static files ── */
-  const safePath = url === "/" ? "/index.html" : url;
+  const safePath = pathname === "/" ? "/index.html" : pathname;
   const filePath = path.join(STATIC, safePath);
 
   if (!filePath.startsWith(STATIC + path.sep) && filePath !== STATIC) {
@@ -608,6 +654,8 @@ function handleMessage(ws, msg) {
       } else if (result.winner) {
         clearTurnTimer(room);
         broadcastState(room);
+        // Record match + update ELO
+        try { recordMatch(room, result.winner); } catch (e) { console.warn("[ELO] record error:", e.message); }
         broadcast(room, { type: "game_over", winnerId: result.winner.id, winnerName: result.winner.name });
         broadcast(room, { type: "toast", message: `🏆 ${result.winner.name} WINS the table!` });
       } else {
@@ -635,6 +683,98 @@ function handleMessage(ws, msg) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   ELO Match Recording
+═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Called after a game ends. Looks up each player's userId (if they have
+ * an authenticated account), computes ELO deltas, and persists match records.
+ */
+function recordMatch(room, winner) {
+  const gamePlayers  = [...room.game.players];      // ordered by position (winner first)
+  const winnerEntry  = gamePlayers.find(p => p.id === winner.id);
+  const ordered      = winnerEntry
+    ? [winnerEntry, ...gamePlayers.filter(p => p.id !== winner.id)]
+    : gamePlayers;
+
+  // Only track players with an account (userId attached at WS auth)
+  const roomPlayers  = [...room.players.values()];
+  const withAccounts = ordered
+    .map((gp, idx) => {
+      const rp = roomPlayers.find(rp => rp.id === gp.id);
+      return rp?.userId ? {
+        userId:       rp.userId,
+        position:     idx + 1,
+        triplets:     gp.triplets?.length || 0,
+        perfectTurns: gp.perfectTurns || 0,
+      } : null;
+    })
+    .filter(Boolean);
+
+  if (withAccounts.length < 2) return; // need at least 2 rated players
+
+  // Fetch current ELOs
+  const ratingRows = withAccounts.map(p => {
+    const r = db.prepare("SELECT elo, win_streak FROM player_ratings WHERE user_id = ?").get(p.userId);
+    return { ...p, elo: r?.elo || 1200, winStreak: r?.win_streak || 0 };
+  });
+
+  const deltas = computeEloDeltas(ratingRows);
+
+  // Insert match record
+  const winnerId = withAccounts.find(p => p.position === 1)?.userId || null;
+  const matchId  = db.prepare(`
+    INSERT INTO matches (room_code, winner_id, player_count, difficulty)
+    VALUES (?, ?, ?, ?)
+  `).run(room.code, winnerId, room.players.size, room.difficulty).lastInsertRowid;
+
+  const insertMatchPlayer = db.prepare(`
+    INSERT INTO match_players (match_id, user_id, elo_before, elo_after, triplets, position)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const updateRating = db.prepare(`
+    UPDATE player_ratings
+    SET elo = ?,
+        wins    = wins    + ?,
+        losses  = losses  + ?,
+        games_played    = games_played + 1,
+        triplets_claimed = triplets_claimed + ?,
+        perfect_turns    = perfect_turns + ?,
+        win_streak  = ?,
+        best_streak = MAX(best_streak, ?),
+        updated_at  = datetime('now')
+    WHERE user_id = ?
+  `);
+
+  db.transaction(() => {
+    for (const rp of ratingRows) {
+      const delta  = deltas.find(d => d.userId === rp.userId);
+      const newElo = delta?.eloAfter || rp.elo;
+      const won    = rp.position === 1 ? 1 : 0;
+      const newStreak = won ? (rp.winStreak || 0) + 1 : 0;
+
+      insertMatchPlayer.run(matchId, rp.userId, rp.elo, newElo, rp.triplets, rp.position);
+      updateRating.run(newElo, won, 1 - won, rp.triplets, rp.perfectTurns, newStreak, newStreak, rp.userId);
+
+      // Notify the player of their ELO change via WS
+      const rp2 = [...room.players.values()].find(p => p.userId === rp.userId);
+      if (rp2?.ws) {
+        send(rp2.ws, {
+          type:     "elo_update",
+          eloBefore: rp.elo,
+          eloAfter:  newElo,
+          delta:     newElo - rp.elo,
+          position:  rp.position,
+        });
+      }
+    }
+  })();
+
+  console.log(`[ELO] Match ${matchId} recorded — ${withAccounts.length} rated players.`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    Utilities
 ═══════════════════════════════════════════════════════════════════ */
 
@@ -647,12 +787,23 @@ function sanitizeName(raw) {
 ═══════════════════════════════════════════════════════════════════ */
 
 const PORT = Number(process.env.PORT) || 3000;
+
+// Give admin module access to the WS broadcast function
+setBroadcastFn((payload) => {
+  const msg = JSON.stringify(payload);
+  wss.clients.forEach(client => {
+    if (client.readyState === 1) client.send(msg);
+  });
+});
+
 httpServer.listen(PORT, () => {
   console.log("─────────────────────────────────────────────");
-  console.log(`  Time Trotter server v2.1`);
-  console.log(`  HTTP:  http://localhost:${PORT}`);
-  console.log(`  WS:    ws://localhost:${PORT}`);
-  console.log(`  Rooms: http://localhost:${PORT}/api/rooms`);
-  console.log(`  Stats: http://localhost:${PORT}/api/stats`);
+  console.log(`  Time Trotter server v3.0`);
+  console.log(`  HTTP:      http://localhost:${PORT}`);
+  console.log(`  WS:        ws://localhost:${PORT}`);
+  console.log(`  Auth:      http://localhost:${PORT}/api/auth/...`);
+  console.log(`  Leaders:   http://localhost:${PORT}/api/leaderboard`);
+  console.log(`  Admin:     http://localhost:${PORT}/api/admin/...`);
+  console.log(`  Rooms:     http://localhost:${PORT}/api/rooms`);
   console.log("─────────────────────────────────────────────");
 });

@@ -1,5 +1,9 @@
 node_modules/
 npm-debug.log*
 .env
+data/*.db
+data/*.db-journal
+data/*.db-wal
+scratch/
 .DS_Store
 Thumbs.db

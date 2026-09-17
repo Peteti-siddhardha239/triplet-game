@@ -1045,6 +1045,37 @@
       return;
     }
 
+    // Animation Helpers
+    function triggerTripletFlyAnimation(value) {
+      const valStr = String(value);
+      const overlay = document.createElement("div");
+      overlay.className = "triplet-fly-overlay";
+      overlay.innerHTML = `
+        <div class="triplet-fly-title">✨ TRIPLET "${valStr}" CLAIMED! ✨</div>
+        <div class="triplet-fly-cards">
+          ${cardMarkup({ value: valStr, colour: "red" })}
+          ${cardMarkup({ value: valStr, colour: "blue" })}
+          ${cardMarkup({ value: valStr, colour: "green" })}
+        </div>
+      `;
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.remove(), 1600);
+    }
+
+    function triggerPanelShake() {
+      const target = $("actionPanel") || $("matrixPanel") || $("game");
+      if (!target) return;
+      target.classList.add("shake-error");
+      setTimeout(() => target.classList.remove("shake-error"), 600);
+    }
+
+    function triggerBonusGlow() {
+      const target = $("turnStatus") || $("clueCount");
+      if (!target) return;
+      target.classList.add("bonus-glow-pulse");
+      setTimeout(() => target.classList.remove("bonus-glow-pulse"), 1600);
+    }
+
     // Claim triplet
     if (e.target.closest("#claimTriplet")) {
       const value = $("tripletValue").value;
@@ -1055,10 +1086,17 @@
         safeOffline(() => {
           const result = game.claimTriplet(value);
           clearTimeout(revealTimer); previewSlot = null; activeReveal = null; $("revealPopup").hidden = true;
+          
+          if (result.wrongCall) {
+            triggerPanelShake();
+            showToast(`❌ Invalid triplet claim for "${value}"! Next turn skipped.`, true);
+          } else {
+            triggerTripletFlyAnimation(result.value || value);
+            showToast(result.winner
+              ? `🏆 ${result.winner.name} WINS!`
+              : `✅ Triplet "${result.value}" claimed! Now ${game.currentPlayer.name}'s turn.`);
+          }
           renderOfflineGame();
-          showToast(result.winner
-            ? `🏆 ${result.winner.name} WINS!`
-            : `✅ Triplet "${result.value}" claimed! Now ${game.currentPlayer.name}'s turn.`);
         });
       }
       return;
